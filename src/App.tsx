@@ -11,7 +11,7 @@ const LANES = [
 
 function getSymbol(lane: string) {
   if (lane === "hh") return "×";
-  if (lane === "sd") return "●";
+  if (lane === "sd") return "○";
   if (lane === "bd") return "■";
   return "";
 }
