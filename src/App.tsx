@@ -86,9 +86,11 @@ export default function App() {
     }, 0);
   }, [events]);
 
-  const totalCols = stepsPerBar * barsPerPage;
-  const colsPerSecond = totalCols / secondsPerPage;
-  const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) || 0.001) / secondsPerPage));
+  const bpm = 120;
+const secondsPerBeat = 60 / bpm;
+const totalCols = stepsPerBar * barsPerPage;
+const colsPerSecond = (stepsPerBar / 4) / secondsPerBeat;
+const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) || 0.001) / secondsPerPage));
 
   const audioPage = Math.floor(time / secondsPerPage) + 1;
   const currentPage = Math.min(Math.max(manualPage, 1), totalPages);
