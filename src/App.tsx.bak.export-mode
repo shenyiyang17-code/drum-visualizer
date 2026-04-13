@@ -1,0 +1,476 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const LANES = [
+  { key: "hh", label: "HH", group: "上层镲片" },
+  { key: "sd", label: "SD", group: "中层鼓件" },
+  { key: "bd", label: "BD", group: "底鼓" },
+];
+
+function getSymbol(lane: string) {
+  if (lane === "hh") return "×";
+  if (lane === "sd") return "●";
+  if (lane === "bd") return "■";
+  return "";
+}
+
+function getCellStyle(lane: string, isCurrent: boolean, isBarStart: boolean, hasValue: boolean): React.CSSProperties {
+  const base: React.CSSProperties = {
+    width: 24,
+    height: 24,
+    marginRight: 4,
+    borderRadius: 8,
+    textAlign: "center",
+    lineHeight: "24px",
+    cursor: "pointer",
+    userSelect: "none",
+    border:
+      isBarStart
+        ? "2px solid #ffd166"
+        : "1px solid #31384a",
+    background:
+      isCurrent
+        ? "#ffd166"
+        : isBarStart
+        ? "#20283a"
+        : "#1b2130",
+    color: hasValue ? "#000" : "#5f6b85",
+    fontWeight: hasValue ? 800 : 500,
+    boxShadow: isCurrent ? "0 0 0 3px rgba(255,209,102,0.22), inset 0 0 0 1px rgba(255,255,255,0.16)" : "none",
+    fontSize: 14,
+    flex: "0 0 auto",
+  };
+
+  if (!hasValue) return base;
+
+  if (lane === "hh") {
+    base.background = isCurrent ? "#ffd166" : "#8ee7f2";
+    base.color = "#000";
+  } else if (lane === "sd") {
+    base.background = isCurrent ? "#ffd166" : "#f3f4f6";
+    base.color = "#111";
+  } else if (lane === "bd") {
+    base.background = isCurrent ? "#ffd166" : "#f6e58d";
+    base.color = "#111";
+  }
+
+  return base;
+}
+
+export default function App() {
+  const [events, setEvents] = useState<any[]>([]);
+  const [time, setTime] = useState(0);
+
+  const [secondsPerPage, setSecondsPerPage] = useState(8);
+  const [stepsPerBar, setStepsPerBar] = useState(16);
+  const [barsPerPage, setBarsPerPage] = useState(4);
+
+  const [manualPage, setManualPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioReady, setAudioReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    fetch("/drum_events.json")
+      .then((r) => r.json())
+      .then((data) => {
+        const list = data.events || data.drum_events || data;
+        setEvents(list);
+      });
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onLoaded = () => {
+      setAudioDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+      setAudioReady(true);
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => setIsPlaying(false);
+
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+
+    let raf = 0;
+    const loop = () => {
+      setTime(audio.currentTime || 0);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, []);
+
+  const maxEventTime = useMemo(() => {
+    return events.reduce((m, ev) => {
+      if (typeof ev.time === "number") return Math.max(m, ev.time);
+      return m;
+    }, 0);
+  }, [events]);
+
+  const totalCols = stepsPerBar * barsPerPage;
+  const colsPerSecond = totalCols / secondsPerPage;
+  const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) || 0.001) / secondsPerPage));
+
+  const audioPage = Math.floor(time / secondsPerPage) + 1;
+  const currentPage = Math.min(Math.max(manualPage, 1), totalPages);
+  const pageStart = (currentPage - 1) * secondsPerPage;
+  const pageEnd = pageStart + secondsPerPage;
+
+  const isAudioInsideCurrentPage = time >= pageStart && time < pageEnd;
+  const currentCol = isAudioInsideCurrentPage
+    ? Math.max(0, Math.min(totalCols - 1, Math.floor((time - pageStart) * colsPerSecond)))
+    : -1;
+
+  useEffect(() => {
+    setPageInput(String(currentPage));
+  }, [currentPage]);
+
+  useEffect(() => {
+    if (audioPage !== currentPage && time >= 0) {
+      setManualPage(audioPage > totalPages ? totalPages : audioPage);
+    }
+  }, [audioPage, currentPage, totalPages, time]);
+
+  const grid = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    LANES.forEach((l) => (map[l.key] = Array(totalCols).fill("")));
+
+    events.forEach((ev) => {
+      if (!ev.lane || typeof ev.time !== "number") return;
+      if (ev.time < pageStart || ev.time >= pageEnd) return;
+
+      const idx = Math.floor((ev.time - pageStart) * colsPerSecond);
+      if (map[ev.lane] && idx >= 0 && idx < totalCols) {
+        map[ev.lane][idx] = getSymbol(ev.lane);
+      }
+    });
+
+    return map;
+  }, [events, pageStart, pageEnd, colsPerSecond, totalCols]);
+
+  const currentBar = currentCol >= 0 ? Math.floor(currentCol / stepsPerBar) + 1 : 1;
+  const currentBeat =
+    currentCol >= 0
+      ? Math.floor((currentCol % stepsPerBar) / (stepsPerBar / 4)) + 1
+      : 1;
+
+  const handleClick = (col: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const t = pageStart + col / colsPerSecond;
+    audio.currentTime = t;
+    setTime(t);
+    setManualPage(currentPage);
+  };
+
+  const jumpToPage = (nextPage: number) => {
+    const safe = Math.min(Math.max(nextPage, 1), totalPages);
+    setManualPage(safe);
+
+    const audio = audioRef.current;
+    if (audio) {
+      audio.currentTime = (safe - 1) * secondsPerPage;
+      setTime(audio.currentTime);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid #2c3344",
+    background: "#1d2230",
+    color: "#f3f6ff",
+  };
+
+  const btnStyle: React.CSSProperties = {
+    padding: "9px 14px",
+    borderRadius: 10,
+    border: "1px solid #2c3344",
+    background: "#1d2230",
+    color: "#f3f6ff",
+    cursor: "pointer",
+    fontWeight: 700,
+  };
+
+  const pillStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid #2c3344",
+    color: "#9aa4ba",
+    fontSize: 14,
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #0d1016 0%, #11151d 100%)",
+        color: "#f3f6ff",
+        padding: 24,
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <div style={{ maxWidth: 1480, margin: "0 auto" }}>
+        <div
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid #2c3344",
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 16,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
+            鼓可视化
+          </div>
+          <div style={{ color: "#9aa4ba", lineHeight: 1.7, fontSize: 14 }}>
+            第{currentPage}页 / 共{totalPages}页 · 第{currentBar}小节 · 第{currentBeat}拍 · 120 BPM · 4/4 拍 · 每小节{stepsPerBar}步 · {pageStart.toFixed(2)}秒–{pageEnd.toFixed(2)}秒
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid #2c3344",
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 16,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(180px, 1fr))",
+              gap: 14,
+              marginBottom: 14,
+            }}
+          >
+            <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+              每页秒数
+              <input
+                type="number"
+                min={1}
+                max={60}
+                step={1}
+                value={secondsPerPage}
+                onChange={(e) => setSecondsPerPage(Math.max(1, Number(e.target.value) || 1))}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+              每小节格数
+              <input
+                type="number"
+                min={4}
+                max={32}
+                step={4}
+                value={stepsPerBar}
+                onChange={(e) => setStepsPerBar(Math.max(4, Number(e.target.value) || 4))}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+              每页小节数
+              <input
+                type="number"
+                min={1}
+                max={16}
+                step={1}
+                value={barsPerPage}
+                onChange={(e) => setBarsPerPage(Math.max(1, Number(e.target.value) || 1))}
+                style={inputStyle}
+              />
+            </label>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 160px",
+              gap: 14,
+              marginBottom: 14,
+              alignItems: "end",
+            }}
+          >
+            <div style={{ display: "flex", gap: 10 }}>
+              <button style={btnStyle} onClick={() => jumpToPage(currentPage - 1)}>
+                上一页
+              </button>
+              <button style={btnStyle} onClick={() => jumpToPage(currentPage + 1)}>
+                下一页
+              </button>
+            </div>
+
+            <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+              跳到页码
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                step={1}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={() => jumpToPage(Number(pageInput) || 1)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") jumpToPage(Number(pageInput) || 1);
+                }}
+                style={inputStyle}
+              />
+            </label>
+
+            <div style={{ color: "#9aa4ba", fontSize: 14, textAlign: "right", paddingBottom: 8 }}>
+              当前页：{currentPage} / {totalPages}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div style={pillStyle}>状态：{isPlaying ? "播放中" : "已停止"}</div>
+            <div style={pillStyle}>当前时间：{time.toFixed(2)}s</div>
+            <div style={pillStyle}>总时长：{audioDuration.toFixed(2)}s</div>
+            <div style={pillStyle}>音频状态：{audioReady ? "已就绪" : "加载中"}</div>
+            <div style={pillStyle}>事件数：{events.length}</div>
+          </div>
+
+          <audio
+            ref={audioRef}
+            src="/Michael Jackson Billie Jean.wav"
+            controls
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        <div
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid #2c3344",
+            borderRadius: 16,
+            padding: 16,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+          }}
+        >
+          <div
+            style={{
+              border: "1px solid #2c3344",
+              background: "rgba(255,255,255,0.02)",
+              borderRadius: 16,
+              overflowX: "auto",
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ width: 88, flex: "0 0 88px" }} />
+              {Array.from({ length: totalCols }).map((_, i) => (
+                <div
+                  key={i}
+                  onClick={() => handleClick(i)}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    marginRight: 4,
+                    borderRadius: 8,
+                    textAlign: "center",
+                    lineHeight: "24px",
+                    cursor: "pointer",
+                    border:
+                      i % stepsPerBar === 0
+                        ? "2px solid #ffd166"
+                        : i % Math.max(1, stepsPerBar / 4) === 0
+                        ? "1px solid #64748b"
+                        : "1px solid #31384a",
+                    background:
+                      i === currentCol
+                        ? "#ffd166"
+                        : i % Math.max(1, stepsPerBar / 4) === 0
+                        ? "#1a2130"
+                        : "#161b24",
+                    color: i === currentCol ? "#000" : "#8792ab",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    flex: "0 0 auto",
+                  }}
+                >
+                  {(i % stepsPerBar) + 1}
+                </div>
+              ))}
+            </div>
+
+            {["上层镲片", "中层鼓件", "底鼓"].map((group) => {
+              const rows = LANES.filter((l) => l.group === group);
+              return (
+                <div key={group} style={{ marginBottom: 22 }}>
+                  <div
+                    style={{
+                      color: "#dce6ff",
+                      fontWeight: 800,
+                      margin: "4px 0 10px 88px",
+                      fontSize: 18,
+                    }}
+                  >
+                    {group}
+                  </div>
+
+                  {rows.map((lane) => (
+                    <div key={lane.key} style={{ display: "flex", marginBottom: 8, alignItems: "center" }}>
+                      <div
+                        style={{
+                          width: 88,
+                          flex: "0 0 88px",
+                          fontSize: 18,
+                          fontWeight: 800,
+                          color: "#d4dcf0",
+                          paddingLeft: 8,
+                        }}
+                      >
+                        {lane.label}
+                      </div>
+
+                      {grid[lane.key]?.map((v, i) => (
+                        <div
+                          key={i}
+                          onClick={() => handleClick(i)}
+                          style={getCellStyle(lane.key, i === currentCol, i % stepsPerBar === 0, Boolean(v))}
+                        >
+                          {v}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "#9aa4ba", fontSize: 14, marginTop: 8 }}>
+              <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#8ee7f2", color: "#000", marginRight: 6 }}>× / ✦</span> 镲片</div>
+              <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f3f4f6", color: "#000", marginRight: 6 }}>●</span> 军鼓</div>
+              <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f6e58d", color: "#000", marginRight: 6 }}>■</span> 底鼓</div>
+              <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#ffd166", color: "#000", marginRight: 6 }}>▌</span> 播放头</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
