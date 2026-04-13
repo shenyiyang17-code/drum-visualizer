@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import ControlsPanel from "./components/ControlsPanel";
 import ScoreView from "./components/ScoreView";
 
+
 const LANES = [
   { key: "hh", label: "HH", group: "上层镲片" },
   { key: "sd", label: "SD", group: "中层鼓件" },
@@ -26,7 +27,7 @@ export default function App() {
 
   const [secondsPerPage, setSecondsPerPage] = useState(8);
   const [stepsPerBar, setStepsPerBar] = useState(16);
-  const [barsPerPage, setBarsPerPage] = useState(4);
+  const [barsPerPage, setBarsPerPage] = useState(2);
 
   const [manualPage, setManualPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
@@ -108,10 +109,11 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
   }, [currentPage]);
 
   useEffect(() => {
-    if (audioPage !== currentPage && time >= 0) {
-      setManualPage(audioPage > totalPages ? totalPages : audioPage);
+    if (!audioReady) return;
+    if (isPlaying && audioPage !== currentPage) {
+      setManualPage(Math.min(audioPage, totalPages));
     }
-  }, [audioPage, currentPage, totalPages, time]);
+  }, [audioPage, currentPage, totalPages, isPlaying, audioReady]);
 
   const grid = useMemo(() => {
     const map: Record<string, string[]> = {};
@@ -202,7 +204,31 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
           setAudioSrc={setAudioSrc}
         />
         )}
+                <div style={{
+          marginBottom: 16,
+          padding: "12px 16px",
+          borderRadius: 10,
+          background: "#1a2130",
+          border: "1px solid #3a445a",
+          color: "#e6ecff",
+          fontSize: 15,
+          fontWeight: 600,
+        }}>
+          🎧 当前页：{currentPage} / {totalPages} ｜ ⏱ {pageStart.toFixed(1)}s - {pageEnd.toFixed(1)}s ｜ ▶ {time.toFixed(1)}s
+        </div>
+          
 
+        <div style={{
+          marginBottom: 12,
+          padding: "10px 14px",
+          borderRadius: 10,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid #2c3344",
+          color: "#cbd5e1",
+          fontSize: 14,
+        }}>
+         当前页：{currentPage} / {totalPages} ｜ 小节范围：{(currentPage - 1) * barsPerPage + 1} - {currentPage * barsPerPage} ｜ 时间范围：{pageStart.toFixed(1)}s - {pageEnd.toFixed(1)}s ｜ 当前时间：{time.toFixed(1)}s
+        </div>
 <ScoreView
   exportMode={EXPORT_MODE}
   lanes={LANES}

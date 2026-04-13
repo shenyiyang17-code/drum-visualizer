@@ -33,7 +33,7 @@ function getCellStyle(
     lineHeight: "24px",
     cursor: "pointer",
     userSelect: "none",
-    border: isBarStart ? "2px solid #ffd166" : "1px solid #31384a",
+    border: isBarStart ? "2px solid #64748b" : "1px solid #31384a",
     background: isCurrent ? "#ffd166" : isCurrentBeatGroup ? "#253046" : isBarStart ? "#20283a" : "#1b2130",
     color: hasValue ? "#0b0f14" : "#5f6b85",
     fontWeight: hasValue ? 900 : 500,
@@ -105,7 +105,7 @@ export default function ScoreView({
                 cursor: "pointer",
                 border:
                 i % stepsPerBar === 0
-                  ? "3px solid #ffd166"
+                  ? "3px solid #64748b"
                   : i % Math.max(1, stepsPerBar / 4) === 0
                   ? "1px solid #64748b"
                   : "1px solid #2a3142",
