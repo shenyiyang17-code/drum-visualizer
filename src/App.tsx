@@ -11,7 +11,7 @@ const LANES = [
 
 function getSymbol(lane: string) {
   if (lane === "hh") return "×";
-  if (lane === "sd") return "○";
+  if (lane === "sd") return "◎";
   if (lane === "bd") return "■";
   return "";
 }
@@ -34,6 +34,7 @@ export default function App() {
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioSrc, setAudioSrc] = useState("/Michael Jackson Billie Jean.wav");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -180,24 +181,26 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
 
         {!EXPORT_MODE && (
           <ControlsPanel
-            secondsPerPage={secondsPerPage}
-            setSecondsPerPage={setSecondsPerPage}
-            stepsPerBar={stepsPerBar}
-            setStepsPerBar={setStepsPerBar}
-            barsPerPage={barsPerPage}
-            setBarsPerPage={setBarsPerPage}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            pageInput={pageInput}
-            setPageInput={setPageInput}
-            jumpToPage={jumpToPage}
-            isPlaying={isPlaying}
-            time={time}
-            audioDuration={audioDuration}
-            audioReady={audioReady}
-            eventCount={events.length}
-            audioRef={audioRef}
-          />
+          secondsPerPage={secondsPerPage}
+          setSecondsPerPage={setSecondsPerPage}
+          stepsPerBar={stepsPerBar}
+          setStepsPerBar={setStepsPerBar}
+          barsPerPage={barsPerPage}
+          setBarsPerPage={setBarsPerPage}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageInput={pageInput}
+          setPageInput={setPageInput}
+          jumpToPage={jumpToPage}
+          isPlaying={isPlaying}
+          time={time}
+          audioDuration={audioDuration}
+          audioReady={audioReady}
+          eventCount={events.length}
+          audioRef={audioRef}
+          audioSrc={audioSrc}
+          setAudioSrc={setAudioSrc}
+        />
         )}
 
 <ScoreView

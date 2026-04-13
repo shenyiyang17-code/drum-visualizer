@@ -34,11 +34,13 @@ function getCellStyle(
     cursor: "pointer",
     userSelect: "none",
     border: isBarStart ? "2px solid #ffd166" : "1px solid #31384a",
-    background: isCurrent ? "#ffd166" : isCurrentBeatGroup ? "#253046" : isBarStart ? "#20283a" : "#1b2130",    fontWeight: hasValue ? 800 : 500,
+    background: isCurrent ? "#ffd166" : isCurrentBeatGroup ? "#253046" : isBarStart ? "#20283a" : "#1b2130",
+    color: hasValue ? "#0b0f14" : "#5f6b85",
+    fontWeight: hasValue ? 900 : 500,
     boxShadow: isCurrent
       ? "0 0 0 3px rgba(255,209,102,0.22), inset 0 0 0 1px rgba(255,255,255,0.16)"
       : "none",
-    fontSize: 14,
+    fontSize: hasValue ? 16 : 14,
     flex: "0 0 auto",
   };
 
@@ -46,13 +48,13 @@ function getCellStyle(
 
   if (lane === "hh") {
     base.background = isCurrent ? "#ffd166" : "#8ee7f2";
-    base.color = "#000";
+    base.color = "#0b0f14";
   } else if (lane === "sd") {
     base.background = isCurrent ? "#ffd166" : "#f3f4f6";
-    base.color = "#111";
+    base.color = "#0b0f14";
   } else if (lane === "bd") {
     base.background = isCurrent ? "#ffd166" : "#f6e58d";
-    base.color = "#111";
+    base.color = "#0b0f14";
   }
 
   return base;
@@ -101,7 +103,7 @@ export default function ScoreView({
                 textAlign: "center",
                 lineHeight: "24px",
                 cursor: "pointer",
-                bborder:
+                border:
                 i % stepsPerBar === 0
                   ? "3px solid #ffd166"
                   : i % Math.max(1, stepsPerBar / 4) === 0
@@ -164,6 +166,7 @@ export default function ScoreView({
                         lane.key,
                         i === currentCol,
                         i % stepsPerBar === 0,
+                        false,
                         Boolean(v)
                       )}
                     >
@@ -187,7 +190,7 @@ export default function ScoreView({
           }}
         >
           <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#8ee7f2", color: "#000", marginRight: 6 }}>× / ✦</span> 镲片</div>
-          <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f3f4f6", color: "#000", marginRight: 6 }}>○</span> 军鼓</div>
+          <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f3f4f6", color: "#000", marginRight: 6 }}>◎</span> 军鼓</div>
           <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f6e58d", color: "#000", marginRight: 6 }}>■</span> 底鼓</div>
           <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#ffd166", color: "#000", marginRight: 6 }}>▌</span> 播放头</div>
         </div>
