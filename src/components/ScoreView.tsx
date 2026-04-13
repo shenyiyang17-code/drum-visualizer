@@ -108,12 +108,14 @@ export default function ScoreView({
                     : i % Math.max(1, stepsPerBar / 4) === 0
                     ? "1px solid #64748b"
                     : "1px solid #31384a",
-                background:
-                  i === currentCol
-                    ? "#ffd166"
-                    : i % Math.max(1, stepsPerBar / 4) === 0
-                    ? "#1a2130"
-                    : "#161b24",
+                    background:
+                    i === currentCol
+                      ? "#ffd166"
+                      : Math.floor((i % stepsPerBar) / (stepsPerBar / 4)) + 1 === currentBeatInBar
+                      ? "#253046"
+                      : i % Math.max(1, stepsPerBar / 4) === 0
+                      ? "#1a2130"
+                      : "#161b24",
                 color: i === currentCol ? "#000" : "#8792ab",
                 fontSize: 11,
                 fontWeight: 700,
