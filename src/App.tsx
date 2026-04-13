@@ -200,15 +200,16 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
           />
         )}
 
-        <ScoreView
-          exportMode={EXPORT_MODE}
-          lanes={LANES}
-          totalCols={totalCols}
-          stepsPerBar={stepsPerBar}
-          currentCol={currentCol}
-          grid={grid}
-          handleClick={handleClick}
-        />
+<ScoreView
+  exportMode={EXPORT_MODE}
+  lanes={LANES}
+  totalCols={totalCols}
+  stepsPerBar={stepsPerBar}
+  currentBeatInBar={currentBeat}
+  currentCol={currentCol}
+  grid={grid}
+  handleClick={handleClick}
+/>
       </div>
     </div>
   );

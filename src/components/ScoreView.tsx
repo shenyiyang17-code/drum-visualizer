@@ -11,6 +11,7 @@ type Props = {
   lanes: Lane[];
   totalCols: number;
   stepsPerBar: number;
+  currentBeatInBar: number;
   currentCol: number;
   grid: Record<string, string[]>;
   handleClick: (col: number) => void;
@@ -63,6 +64,7 @@ export default function ScoreView({
   lanes,
   totalCols,
   stepsPerBar,
+  currentBeatInBar,
   currentCol,
   grid,
   handleClick,
@@ -118,7 +120,7 @@ export default function ScoreView({
                 flex: "0 0 auto",
               }}
             >
-              {(i % stepsPerBar) + 1}
+              {Math.floor((i % stepsPerBar) / (stepsPerBar / 4)) + 1}
             </div>
           ))}
         </div>
