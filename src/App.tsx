@@ -3,7 +3,6 @@ import Header from "./components/Header";
 import ControlsPanel from "./components/ControlsPanel";
 import ScoreView from "./components/ScoreView";
 
-
 const LANES = [
   { key: "hh", label: "HH", group: "上层镲片" },
   { key: "sd", label: "SD", group: "中层鼓件" },
@@ -37,6 +36,10 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioSrc, setAudioSrc] = useState("/Michael Jackson Billie Jean.wav");
 
+  const [loopStart, setLoopStart] = useState<number | null>(null);
+  const [loopEnd, setLoopEnd] = useState<number | null>(null);
+  const [loopEnabled, setLoopEnabled] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -56,30 +59,46 @@ export default function App() {
       setAudioDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
       setAudioReady(true);
     };
+
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onEnded = () => setIsPlaying(false);
+
+    const onTimeUpdate = () => {
+      const current = audio.currentTime || 0;
+
+      if (
+        loopEnabled &&
+        loopStart !== null &&
+        loopEnd !== null &&
+        loopEnd > loopStart &&
+        current >= loopEnd
+      ) {
+        audio.currentTime = loopStart;
+        setTime(loopStart);
+        return;
+      }
+
+      setTime(current);
+    };
 
     audio.addEventListener("loadedmetadata", onLoaded);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("timeupdate", onTimeUpdate);
 
-    let raf = 0;
-    const loop = () => {
-      setTime(audio.currentTime || 0);
-      raf = requestAnimationFrame(loop);
-    };
-    loop();
+    // 初始化一次
+    setTime(audio.currentTime || 0);
 
     return () => {
-      cancelAnimationFrame(raf);
       audio.removeEventListener("loadedmetadata", onLoaded);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
     };
-  }, []);
+  }, [loopEnabled, loopStart, loopEnd, audioSrc]);
 
   const maxEventTime = useMemo(() => {
     return events.reduce((m, ev) => {
@@ -89,10 +108,13 @@ export default function App() {
   }, [events]);
 
   const bpm = 120;
-const secondsPerBeat = 60 / bpm;
-const totalCols = stepsPerBar * barsPerPage;
-const colsPerSecond = (stepsPerBar / 4) / secondsPerBeat;
-const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) || 0.001) / secondsPerPage));
+  const secondsPerBeat = 60 / bpm;
+  const totalCols = stepsPerBar * barsPerPage;
+  const colsPerSecond = (stepsPerBar / 4) / secondsPerBeat;
+  const totalPages = Math.max(
+    1,
+    Math.ceil((Math.max(maxEventTime, audioDuration) || 0.001) / secondsPerPage)
+  );
 
   const audioPage = Math.floor(time / secondsPerPage) + 1;
   const currentPage = Math.min(Math.max(manualPage, 1), totalPages);
@@ -101,7 +123,10 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
 
   const isAudioInsideCurrentPage = time >= pageStart && time < pageEnd;
   const currentCol = isAudioInsideCurrentPage
-    ? Math.max(0, Math.min(totalCols - 1, Math.floor((time - pageStart) * colsPerSecond)))
+    ? Math.max(
+        0,
+        Math.min(totalCols - 1, Math.floor((time - pageStart) * colsPerSecond))
+      )
     : -1;
 
   useEffect(() => {
@@ -163,7 +188,9 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
     <div
       style={{
         minHeight: "100vh",
-        background: EXPORT_MODE ? "#f8fafc" : "linear-gradient(180deg, #0d1016 0%, #11151d 100%)",
+        background: EXPORT_MODE
+          ? "#f8fafc"
+          : "linear-gradient(180deg, #0d1016 0%, #11151d 100%)",
         color: "#f3f6ff",
         padding: 24,
         fontFamily: "Arial, sans-serif",
@@ -183,62 +210,61 @@ const totalPages = Math.max(1, Math.ceil((Math.max(maxEventTime, audioDuration) 
 
         {!EXPORT_MODE && (
           <ControlsPanel
-          secondsPerPage={secondsPerPage}
-          setSecondsPerPage={setSecondsPerPage}
-          stepsPerBar={stepsPerBar}
-          setStepsPerBar={setStepsPerBar}
-          barsPerPage={barsPerPage}
-          setBarsPerPage={setBarsPerPage}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageInput={pageInput}
-          setPageInput={setPageInput}
-          jumpToPage={jumpToPage}
-          isPlaying={isPlaying}
-          time={time}
-          audioDuration={audioDuration}
-          audioReady={audioReady}
-          eventCount={events.length}
-          audioRef={audioRef}
-          audioSrc={audioSrc}
-          setAudioSrc={setAudioSrc}
-        />
+            secondsPerPage={secondsPerPage}
+            setSecondsPerPage={setSecondsPerPage}
+            stepsPerBar={stepsPerBar}
+            setStepsPerBar={setStepsPerBar}
+            barsPerPage={barsPerPage}
+            setBarsPerPage={setBarsPerPage}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageInput={pageInput}
+            setPageInput={setPageInput}
+            jumpToPage={jumpToPage}
+            isPlaying={isPlaying}
+            time={time}
+            audioDuration={audioDuration}
+            audioReady={audioReady}
+            eventCount={events.length}
+            audioRef={audioRef}
+            audioSrc={audioSrc}
+            setAudioSrc={setAudioSrc}
+            loopStart={loopStart}
+            loopEnd={loopEnd}
+            setLoopStart={setLoopStart}
+            setLoopEnd={setLoopEnd}
+            loopEnabled={loopEnabled}
+            setLoopEnabled={setLoopEnabled}
+          />
         )}
-                <div style={{
-          marginBottom: 16,
-          padding: "12px 16px",
-          borderRadius: 10,
-          background: "#1a2130",
-          border: "1px solid #3a445a",
-          color: "#e6ecff",
-          fontSize: 15,
-          fontWeight: 600,
-        }}>
-          🎧 当前页：{currentPage} / {totalPages} ｜ ⏱ {pageStart.toFixed(1)}s - {pageEnd.toFixed(1)}s ｜ ▶ {time.toFixed(1)}s
-        </div>
-          
 
-        <div style={{
-          marginBottom: 12,
-          padding: "10px 14px",
-          borderRadius: 10,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid #2c3344",
-          color: "#cbd5e1",
-          fontSize: 14,
-        }}>
-         当前页：{currentPage} / {totalPages} ｜ 小节范围：{(currentPage - 1) * barsPerPage + 1} - {currentPage * barsPerPage} ｜ 时间范围：{pageStart.toFixed(1)}s - {pageEnd.toFixed(1)}s ｜ 当前时间：{time.toFixed(1)}s
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderRadius: 10,
+            background: "#1a2130",
+            border: "1px solid #3a445a",
+            color: "#e6ecff",
+            fontSize: 15,
+            fontWeight: 600,
+          }}
+        >
+          🎧 当前页：{currentPage} / {totalPages} ｜ 小节范围：
+          {(currentPage - 1) * barsPerPage + 1} - {currentPage * barsPerPage} ｜ ⏱{" "}
+          {pageStart.toFixed(1)}s - {pageEnd.toFixed(1)}s ｜ ▶ {time.toFixed(1)}s
         </div>
-<ScoreView
-  exportMode={EXPORT_MODE}
-  lanes={LANES}
-  totalCols={totalCols}
-  stepsPerBar={stepsPerBar}
-  currentBeatInBar={currentBeat}
-  currentCol={currentCol}
-  grid={grid}
-  handleClick={handleClick}
-/>
+
+        <ScoreView
+          exportMode={EXPORT_MODE}
+          lanes={LANES}
+          totalCols={totalCols}
+          stepsPerBar={stepsPerBar}
+          currentBeatInBar={currentBeat}
+          currentCol={currentCol}
+          grid={grid}
+          handleClick={handleClick}
+        />
       </div>
     </div>
   );

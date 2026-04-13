@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 
 type Props = {
   secondsPerPage: number;
@@ -18,6 +18,15 @@ type Props = {
   audioReady: boolean;
   eventCount: number;
   audioRef: React.RefObject<HTMLAudioElement | null>;
+  audioSrc: string;
+  setAudioSrc: (v: string) => void;
+
+  loopStart: number | null;
+  loopEnd: number | null;
+  setLoopStart: (n: number | null) => void;
+  setLoopEnd: (n: number | null) => void;
+  loopEnabled: boolean;
+  setLoopEnabled: (v: boolean) => void;
 };
 
 export default function ControlsPanel({
@@ -38,7 +47,24 @@ export default function ControlsPanel({
   audioReady,
   eventCount,
   audioRef,
+  audioSrc,
+  setAudioSrc,
+  loopStart,
+  loopEnd,
+  setLoopStart,
+  setLoopEnd,
+  loopEnabled,
+  setLoopEnabled,
 }: Props) {
+  const [fileName, setFileName] = useState("");
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [audioRef, playbackRate]);
+
   const inputStyle: React.CSSProperties = {
     width: "100%",
     padding: "8px 10px",
@@ -75,7 +101,6 @@ export default function ControlsPanel({
         borderRadius: 16,
         padding: 16,
         marginBottom: 16,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
       }}
     >
       <div
@@ -174,9 +199,119 @@ export default function ControlsPanel({
         <div style={pillStyle}>事件数：{eventCount}</div>
       </div>
 
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
+          gap: 12,
+          marginBottom: 14,
+          alignItems: "end",
+        }}
+      >
+        <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+          循环开始（秒）
+          <input
+            type="number"
+            min={0}
+            max={audioDuration || 9999}
+            step={0.1}
+            value={loopStart ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setLoopStart(v === "" ? null : Number(v));
+            }}
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+          循环结束（秒）
+          <input
+            type="number"
+            min={0}
+            max={audioDuration || 9999}
+            step={0.1}
+            value={loopEnd ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setLoopEnd(v === "" ? null : Number(v));
+            }}
+            style={inputStyle}
+          />
+        </label>
+
+        <button
+          style={btnStyle}
+          onClick={() => {
+            if (loopStart !== null && loopEnd !== null && loopEnd > loopStart) {
+              setLoopEnabled(!loopEnabled);
+            }
+          }}
+        >
+          {loopEnabled ? "关闭循环" : "开启循环"}
+        </button>
+
+        <button
+          style={btnStyle}
+          onClick={() => {
+            setLoopEnabled(false);
+            setLoopStart(null);
+            setLoopEnd(null);
+          }}
+        >
+          清除循环
+        </button>
+      </div>
+
+      <div style={{ marginBottom: 14, fontSize: 12, color: "#9aa4ba" }}>
+        循环状态：{loopEnabled ? "已开启" : "未开启"} ｜ 开始：{loopStart ?? "-"} ｜ 结束：
+        {loopEnd ?? "-"}
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ color: "#9aa4ba", fontSize: 13, display: "block", marginBottom: 6 }}>
+          上传音频文件
+        </label>
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const url = URL.createObjectURL(file);
+            setAudioSrc(url);
+            setFileName(file.name);
+          }}
+          style={inputStyle}
+        />
+        {fileName && (
+          <div style={{ marginTop: 6, fontSize: 12, color: "#9aa4ba" }}>
+            当前文件：{fileName}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ color: "#9aa4ba", fontSize: 13 }}>
+          播放速度（0.5 - 2.0）
+          <input
+            type="number"
+            min={0.5}
+            max={2}
+            step={0.1}
+            value={playbackRate}
+            onChange={(e) => {
+              const v = Number(e.target.value) || 1;
+              setPlaybackRate(Math.max(0.5, Math.min(2, v)));
+            }}
+            style={inputStyle}
+          />
+        </label>
+      </div>
+
       <audio
         ref={audioRef}
-        src="/Michael Jackson Billie Jean.wav"
+        src={audioSrc}
         controls
         style={{ width: "100%" }}
       />
