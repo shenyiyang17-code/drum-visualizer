@@ -101,12 +101,12 @@ export default function ScoreView({
                 textAlign: "center",
                 lineHeight: "24px",
                 cursor: "pointer",
-                border:
-                  i % stepsPerBar === 0
-                    ? "2px solid #ffd166"
-                    : i % Math.max(1, stepsPerBar / 4) === 0
-                    ? "1px solid #64748b"
-                    : "1px solid #31384a",
+                bborder:
+                i % stepsPerBar === 0
+                  ? "3px solid #ffd166"
+                  : i % Math.max(1, stepsPerBar / 4) === 0
+                  ? "1px solid #64748b"
+                  : "1px solid #2a3142",
                     background:
                     i === currentCol
                       ? "#ffd166"
