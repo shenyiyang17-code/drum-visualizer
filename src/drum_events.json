@@ -1,0 +1,12 @@
+[
+  { "time": 0, "track": "HH" },
+  { "time": 0.5, "track": "HH" },
+  { "time": 1, "track": "HH" },
+  { "time": 1.5, "track": "HH" },
+
+  { "time": 1, "track": "SD" },
+  { "time": 3, "track": "SD" },
+
+  { "time": 0, "track": "BD" },
+  { "time": 2, "track": "BD" }
+]

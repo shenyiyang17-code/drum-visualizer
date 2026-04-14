@@ -1,308 +1,805 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ScoreView from "./components/ScoreView";
+import drumDataRaw from "./drum_events.json";
 
-const LANES = [
-  { key: "hh", label: "HH", group: "上层镲片" },
-  { key: "sd", label: "SD", group: "中层鼓件" },
-  { key: "bd", label: "BD", group: "底鼓" },
-];
+type TrackName = "HH" | "SD" | "BD";
 
-function getSymbol(lane: string) {
-  if (lane === "hh") return "×";
-  if (lane === "sd") return "●";
-  if (lane === "bd") return "■";
-  return "";
+type DrumEvent = {
+  time: number;
+  track: TrackName;
+};
+
+type EditMode = "play" | "setLoopStart" | "setLoopEnd";
+
+type DrumDataShape =
+  | DrumEvent[]
+  | {
+      bpm?: number;
+      duration?: number;
+      events?: Array<{
+        time?: number;
+        t?: number;
+        instrument?: string;
+        track?: string;
+        lane?: string;
+      }>;
+    };
+
+const AUDIO_SRC = "/audio/drums.mp3";
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeTrackName(input: string | undefined): TrackName | null {
+  if (!input) return null;
+  const v = input.toLowerCase();
+
+  if (["hh", "hihat", "hi-hat", "hat"].includes(v)) return "HH";
+  if (["sd", "snare"].includes(v)) return "SD";
+  if (["bd", "kick", "bassdrum", "bass", "kickdrum"].includes(v)) return "BD";
+
+  return null;
+}
+
+function normalizeDrumData(raw: DrumDataShape): {
+  bpm: number;
+  duration: number;
+  events: DrumEvent[];
+} {
+  let bpm = 120;
+  let duration = 0;
+  let events: DrumEvent[] = [];
+
+  if (Array.isArray(raw)) {
+    events = raw
+      .map((e: any) => {
+        const track = normalizeTrackName(e.track ?? e.instrument ?? e.lane);
+        const time = Number(e.time ?? e.t ?? 0);
+        if (!track || Number.isNaN(time)) return null;
+        return { time, track };
+      })
+      .filter(Boolean) as DrumEvent[];
+  } else {
+    bpm = Number(raw.bpm ?? 120);
+    duration = Number(raw.duration ?? 0);
+
+    events = (raw.events ?? [])
+      .map((e) => {
+        const track = normalizeTrackName(e.track ?? e.instrument ?? e.lane);
+        const time = Number(e.time ?? e.t ?? 0);
+        if (!track || Number.isNaN(time)) return null;
+        return { time, track };
+      })
+      .filter(Boolean) as DrumEvent[];
+  }
+
+  if (!duration && events.length > 0) {
+    duration = Math.max(...events.map((e) => e.time)) + 2;
+  }
+
+  return {
+    bpm,
+    duration: Math.max(duration, 8),
+    events,
+  };
+}
+
+function buildStepMap(
+  events: DrumEvent[],
+  stepCount: number,
+  stepDuration: number
+): Record<TrackName, Set<number>> {
+  const map: Record<TrackName, Set<number>> = {
+    HH: new Set<number>(),
+    SD: new Set<number>(),
+    BD: new Set<number>(),
+  };
+
+  for (const ev of events) {
+    const step = Math.round(ev.time / stepDuration);
+    if (step >= 0 && step < stepCount) {
+      map[ev.track].add(step);
+    }
+  }
+
+  return map;
 }
 
 export default function App() {
-  const [events, setEvents] = useState<any[]>([]);
-  const [time, setTime] = useState(0);
+  const parsed = useMemo(() => normalizeDrumData(drumDataRaw as DrumDataShape), []);
+  const bpm = parsed.bpm;
+  const duration = parsed.duration;
+  const events = parsed.events;
 
-  const [stepsPerBar] = useState(16);
-  const [barsPerPage] = useState(5);
-  const [secondsPerPage] = useState(8);
-  const [manualPage] = useState(0);
+  const beatsPerBar = 4;
+  const stepsPerBeat = 4;
+  const secondsPerBeat = 60 / bpm;
+  const stepDuration = secondsPerBeat / stepsPerBeat;
+  const totalSteps = Math.ceil(duration / stepDuration);
+  const barSteps = beatsPerBar * stepsPerBeat;
+  const bars = Math.ceil(totalSteps / barSteps);
 
-  const [loopStart, setLoopStart] = useState(0);
-  const [loopEnd, setLoopEnd] = useState(8);
-  const [loopStartInput, setLoopStartInput] = useState("0");
-  const [loopEndInput, setLoopEndInput] = useState("8");
-  const [isSelectingLoopStart, setIsSelectingLoopStart] = useState(true);
-
-  const [audioSrc] = useState("/Michael Jackson Billie Jean.wav");
-  const [metronomeEnabled, setMetronomeEnabled] = useState(true);
+  const stepMap = useMemo(
+    () => buildStepMap(events, totalSteps, stepDuration),
+    [events, totalSteps, stepDuration]
+  );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-  const applyLoopRange = () => {
-    const start = Number(loopStartInput);
-    const end = Number(loopEndInput);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (start < 0 || end < 0) return;
+  const [mode, setMode] = useState<EditMode>("play");
 
-    const fixedStart = Math.min(start, end);
-    const fixedEnd = Math.max(start, end);
+  const [loopStart, setLoopStart] = useState<number | null>(null);
+  const [loopEnd, setLoopEnd] = useState<number | null>(null);
 
-    setLoopStart(fixedStart);
-    setLoopEnd(fixedEnd);
-    setIsSelectingLoopStart(true);
-  };
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [metronomeEnabled, setMetronomeEnabled] = useState(false);
 
-  const clearLoopRange = () => {
-    setLoopStart(0);
-    setLoopEnd(secondsPerPage);
-    setLoopStartInput("0");
-    setLoopEndInput(String(secondsPerPage));
-    setIsSelectingLoopStart(true);
-  };
+  const [stepWidth, setStepWidth] = useState(28);
+  const [zoom, setZoom] = useState(1);
 
-  useEffect(() => {
-    fetch("./drum_events.json")
-      .then((r) => r.json())
-      .then((data) => {
-        const list = data?.events || data?.drum_events || data;
-        setEvents(Array.isArray(list) ? list : []);
-      })
-      .catch(() => setEvents([]));
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const lastMetroBeatRef = useRef<number>(-1);
+
+  const hasLoop = loopStart !== null && loopEnd !== null && loopEnd > loopStart;
+
+  const snapTime = useCallback(
+    (t: number) => {
+      const safe = clamp(t, 0, duration);
+      if (!snapEnabled) return safe;
+      const snappedStep = Math.round(safe / stepDuration);
+      return clamp(snappedStep * stepDuration, 0, duration);
+    },
+    [duration, snapEnabled, stepDuration]
+  );
+
+  const seekTo = useCallback(
+    (t: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const next = clamp(t, 0, duration);
+      audio.currentTime = next;
+      setCurrentTime(next);
+    },
+    [duration]
+  );
+
+  const seekToSnapped = useCallback(
+    (t: number) => {
+      seekTo(snapTime(t));
+    },
+    [seekTo, snapTime]
+  );
+
+  const jumpToBar = useCallback(
+    (barIndex: number) => {
+      const targetStep = clamp(barIndex * barSteps, 0, totalSteps - 1);
+      seekToSnapped(targetStep * stepDuration);
+    },
+    [barSteps, seekToSnapped, stepDuration, totalSteps]
+  );
+
+  const zoomIn = useCallback(() => {
+    setStepWidth((v) => clamp(v + 4, 12, 64));
   }, []);
+
+  const zoomOut = useCallback(() => {
+    setStepWidth((v) => clamp(v - 4, 12, 64));
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setStepWidth(28);
+  }, []);
+
+  const increaseZoom = useCallback(() => {
+    setZoom((v) => Math.min(3, parseFloat((v + 0.1).toFixed(2))));
+  }, []);
+
+  const decreaseZoom = useCallback(() => {
+    setZoom((v) => Math.max(0.5, parseFloat((v - 0.1).toFixed(2))));
+  }, []);
+
+  const play = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    try {
+      await audio.play();
+      setIsPlaying(true);
+    } catch (err) {
+      console.error("audio play failed:", err);
+    }
+  }, []);
+
+  const pause = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    if (isPlaying) pause();
+    else play();
+  }, [isPlaying, pause, play]);
+
+  const clearLoop = useCallback(() => {
+    setLoopStart(null);
+    setLoopEnd(null);
+  }, []);
+
+  const setLoopStartAt = useCallback(
+    (t: number) => {
+      const v = snapTime(t);
+
+      setLoopStart(() => {
+        const nextStart = v;
+
+        setLoopEnd((prevEnd) => {
+          if (prevEnd === null) return prevEnd;
+          if (prevEnd <= nextStart) {
+            return clamp(nextStart + stepDuration, 0, duration);
+          }
+          return prevEnd;
+        });
+
+        return nextStart;
+      });
+    },
+    [duration, snapTime, stepDuration]
+  );
+
+  const setLoopEndAt = useCallback(
+    (t: number) => {
+      const v = snapTime(t);
+
+      setLoopEnd(() => {
+        const nextEnd = v;
+
+        setLoopStart((prevStart) => {
+          if (prevStart === null) return prevStart;
+          if (nextEnd <= prevStart) {
+            return clamp(nextEnd - stepDuration, 0, duration);
+          }
+          return prevStart;
+        });
+
+        return nextEnd;
+      });
+    },
+    [duration, snapTime, stepDuration]
+  );
+
+  const handleGridTimeAction = useCallback(
+    (t: number) => {
+      const target = snapTime(t);
+
+      if (mode === "play") {
+        seekTo(target);
+        return;
+      }
+
+      if (mode === "setLoopStart") {
+        setLoopStartAt(target);
+        return;
+      }
+
+      if (mode === "setLoopEnd") {
+        setLoopEndAt(target);
+      }
+    },
+    [mode, seekTo, setLoopEndAt, setLoopStartAt, snapTime]
+  );
+
+  const currentStep = Math.round(currentTime / stepDuration);
+  const currentBar = Math.floor(currentStep / barSteps);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const timer = window.setInterval(() => {
-      if (!audio.paused) {
-        setTime(audio.currentTime || 0);
+    const tick = () => {
+      const t = audio.currentTime;
+
+      if (hasLoop && loopStart !== null && loopEnd !== null && t >= loopEnd) {
+        audio.currentTime = loopStart;
+        setCurrentTime(loopStart);
+      } else {
+        setCurrentTime(t);
       }
-    }, 50);
 
-    return () => window.clearInterval(timer);
-  }, []);
+      rafRef.current = requestAnimationFrame(tick);
+    };
 
-  const bpm = 120;
-  const secondsPerBeat = 60 / bpm;
+    if (isPlaying) {
+      rafRef.current = requestAnimationFrame(tick);
+    } else if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [hasLoop, isPlaying, loopEnd, loopStart]);
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !metronomeEnabled) return;
+    if (!audio) return;
 
-    let timer: number | null = null;
-    let lastBeat = -1;
+    const onEnded = () => {
+      setIsPlaying(false);
+    };
 
-    const playClick = (isDownBeat: boolean) => {
-      const ctx = new AudioContext();
+    audio.addEventListener("ended", onEnded);
+    return () => audio.removeEventListener("ended", onEnded);
+  }, []);
+
+  const ensureAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext();
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const beep = useCallback(
+    (accent: boolean) => {
+      const ctx = ensureAudioContext();
+
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+
+      osc.type = "square";
+      osc.frequency.value = accent ? 1200 : 800;
+
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
-      osc.frequency.value = isDownBeat ? 1800 : 500;
-      gain.gain.value = isDownBeat ? 0.35 : 0.1;
-
-      osc.start();
-      osc.stop(ctx.currentTime + 0.05);
-    };
-
-    const start = () => {
-      lastBeat = Math.floor(audio.currentTime / secondsPerBeat);
-
-      timer = window.setInterval(() => {
-        if (audio.paused) return;
-
-        const beat = Math.floor(audio.currentTime / secondsPerBeat);
-        if (beat !== lastBeat) {
-          lastBeat = beat;
-          playClick(beat % 4 === 0);
-        }
-      }, 20);
-    };
-
-    const stop = () => {
-      if (timer !== null) {
-        window.clearInterval(timer);
-        timer = null;
-      }
-    };
-
-    audio.addEventListener("play", start);
-    audio.addEventListener("pause", stop);
-    audio.addEventListener("ended", stop);
-
-    return () => {
-      stop();
-      audio.removeEventListener("play", start);
-      audio.removeEventListener("pause", stop);
-      audio.removeEventListener("ended", stop);
-    };
-  }, [secondsPerBeat, metronomeEnabled]);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.07);
+    },
+    [ensureAudioContext]
+  );
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (audio.currentTime >= loopEnd) {
-      audio.currentTime = loopStart;
+    if (!metronomeEnabled || !isPlaying) {
+      lastMetroBeatRef.current = -1;
+      return;
     }
-  }, [time, loopStart, loopEnd]);
+
+    const beatIndex = Math.floor(currentTime / secondsPerBeat);
+
+    if (beatIndex !== lastMetroBeatRef.current) {
+      lastMetroBeatRef.current = beatIndex;
+      const accent = beatIndex % beatsPerBar === 0;
+      beep(accent);
+    }
+  }, [beep, beatsPerBar, currentTime, isPlaying, metronomeEnabled, secondsPerBeat]);
 
   useEffect(() => {
-    setLoopStartInput(loopStart.toFixed(2));
-    setLoopEndInput(loopEnd.toFixed(2));
-  }, [loopStart, loopEnd]);
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
 
-  const totalCols = stepsPerBar * barsPerPage;
-  const colsPerSecond = (stepsPerBar / 4) / secondsPerBeat;
+      const isTyping =
+        tag === "input" ||
+        tag === "textarea" ||
+        (target as HTMLElement | null)?.isContentEditable;
 
-  const pageStart = manualPage * secondsPerPage;
-  const pageEnd = pageStart + secondsPerPage;
+      if (isTyping) return;
 
-  const currentCol = Math.floor((time - pageStart) * colsPerSecond);
-  const snappedCol = Math.max(0, Math.min(totalCols - 1, currentCol));
-  const playheadX = snappedCol * 28;
-
-  const grid = useMemo(() => {
-    const map: Record<string, string[]> = {};
-    LANES.forEach((lane) => {
-      map[lane.key] = Array(totalCols).fill("");
-    });
-
-    events.forEach((ev) => {
-      const t = Number(ev?.time);
-      if (!Number.isFinite(t)) return;
-
-      const lane = String(ev?.lane || "").toLowerCase();
-      if (!map[lane]) return;
-
-      const idx = Math.floor((t - pageStart) * colsPerSecond);
-      if (t >= pageStart && t < pageEnd && idx >= 0 && idx < totalCols) {
-        map[lane][idx] = getSymbol(lane);
+      if (e.code === "Space") {
+        e.preventDefault();
+        togglePlay();
+        return;
       }
-    });
 
-    return map;
-  }, [events, pageStart, pageEnd, colsPerSecond, totalCols]);
+      if (e.key === "Enter") {
+        e.preventDefault();
+        seekTo(hasLoop && loopStart !== null ? loopStart : 0);
+        return;
+      }
+
+      if (e.key === "[") {
+        e.preventDefault();
+        setLoopStartAt(currentTime);
+        return;
+      }
+
+      if (e.key === "]") {
+        e.preventDefault();
+        setLoopEndAt(currentTime);
+        return;
+      }
+
+      if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        clearLoop();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        setSnapEnabled((v) => !v);
+        return;
+      }
+
+      if (e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        setMetronomeEnabled((v) => !v);
+        return;
+      }
+
+      if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomOut();
+        return;
+      }
+
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomIn();
+        return;
+      }
+
+      if (e.key === "0") {
+        e.preventDefault();
+        resetZoom();
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        const delta = e.shiftKey ? secondsPerBeat * beatsPerBar : secondsPerBeat;
+        seekToSnapped(currentTime - delta);
+        return;
+      }
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        const delta = e.shiftKey ? secondsPerBeat * beatsPerBar : secondsPerBeat;
+        seekToSnapped(currentTime + delta);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    clearLoop,
+    currentTime,
+    hasLoop,
+    loopStart,
+    resetZoom,
+    seekTo,
+    seekToSnapped,
+    secondsPerBeat,
+    beatsPerBar,
+    setLoopEndAt,
+    setLoopStartAt,
+    togglePlay,
+    zoomIn,
+    zoomOut,
+  ]);
+
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+
+      if (e.deltaY < 0) {
+        setZoom((v) => Math.min(3, parseFloat((v + 0.1).toFixed(2))));
+      } else if (e.deltaY > 0) {
+        setZoom((v) => Math.max(0.5, parseFloat((v - 0.1).toFixed(2))));
+      }
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel as EventListener);
+  }, []);
 
   return (
     <div
       style={{
-        padding: 20,
-        background: "#0d1016",
-        color: "#fff",
         minHeight: "100vh",
+        background: "#111318",
+        color: "#f3f4f6",
+        padding: 24,
+        boxSizing: "border-box",
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      <audio ref={audioRef} src={audioSrc} controls style={{ width: 400 }} />
+      <audio ref={audioRef} src={AUDIO_SRC} preload="auto" />
 
-      <div style={{ marginTop: 10, lineHeight: 1.8 }}>
+      <div
+        style={{
+          maxWidth: 1500,
+          margin: "0 auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
         <div>
-          当前操作：
-          {isSelectingLoopStart ? "点击谱面选择循环开始" : "点击谱面选择循环结束"}
-        </div>
-        <div>
-          循环开始：{loopStart.toFixed(2)}s ｜ 循环结束：{loopEnd.toFixed(2)}s
+          <h1 style={{ margin: 0, fontSize: 28 }}>drum-visualizer</h1>
+          <div style={{ opacity: 0.72, marginTop: 6 }}>
+            Zoom / Bar Navigation / Mini Map / DAW-style practice workflow
+          </div>
         </div>
 
         <div
           style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            marginTop: 8,
-            flexWrap: "wrap",
+            background: "#1a1f29",
+            border: "1px solid #2a3140",
+            borderRadius: 14,
+            padding: 16,
+            display: "grid",
+            gap: 12,
           }}
         >
-          <label>
-            开始：
-            <input
-              type="number"
-              step="0.01"
-              value={loopStartInput}
-              onChange={(e) => setLoopStartInput(e.target.value)}
-              style={{ marginLeft: 6, width: 90 }}
-            />
-          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <button onClick={togglePlay} style={buttonStyle(isPlaying)}>
+              {isPlaying ? "暂停" : "播放"}（Space）
+            </button>
 
-          <label>
-            结束：
-            <input
-              type="number"
-              step="0.01"
-              value={loopEndInput}
-              onChange={(e) => setLoopEndInput(e.target.value)}
-              style={{ marginLeft: 6, width: 90 }}
-            />
-          </label>
+            <button
+              onClick={() => seekTo(hasLoop && loopStart !== null ? loopStart : 0)}
+              style={buttonStyle(false)}
+            >
+              回到起点（Enter）
+            </button>
 
-          <button onClick={applyLoopRange}>应用循环</button>
-          <button onClick={clearLoopRange}>清除循环</button>
+            <button onClick={() => setMode("play")} style={buttonStyle(mode === "play")}>
+              播放模式
+            </button>
+
+            <button
+              onClick={() => setMode("setLoopStart")}
+              style={buttonStyle(mode === "setLoopStart")}
+            >
+              设置循环开始
+            </button>
+
+            <button
+              onClick={() => setMode("setLoopEnd")}
+              style={buttonStyle(mode === "setLoopEnd")}
+            >
+              设置循环结束
+            </button>
+
+            <button onClick={() => setLoopStartAt(currentTime)} style={buttonStyle(false)}>
+              设当前为 Loop Start（[）
+            </button>
+
+            <button onClick={() => setLoopEndAt(currentTime)} style={buttonStyle(false)}>
+              设当前为 Loop End（]）
+            </button>
+
+            <button onClick={clearLoop} style={buttonStyle(false)}>
+              清除 Loop（Delete）
+            </button>
+
+            <button
+              onClick={() => setSnapEnabled((v) => !v)}
+              style={buttonStyle(snapEnabled)}
+            >
+              Snap {snapEnabled ? "ON" : "OFF"}（S）
+            </button>
+
+            <button
+              onClick={() => setMetronomeEnabled((v) => !v)}
+              style={buttonStyle(metronomeEnabled)}
+            >
+              节拍器 {metronomeEnabled ? "ON" : "OFF"}（M）
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <button onClick={decreaseZoom} style={buttonStyle(false)}>-</button>
+            <button onClick={increaseZoom} style={buttonStyle(false)}>+</button>
+
+            <button onClick={zoomOut} style={buttonStyle(false)}>
+              缩小（-）
+            </button>
+            <button onClick={resetZoom} style={buttonStyle(false)}>
+              默认缩放（0）
+            </button>
+            <button onClick={zoomIn} style={buttonStyle(false)}>
+              放大（+）
+            </button>
+
+            <div
+              style={{
+                background: "#141923",
+                border: "1px solid #283142",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontWeight: 700,
+              }}
+            >
+              Zoom: {zoom}x
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, minmax(150px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <InfoCard label="BPM" value={String(bpm)} />
+            <InfoCard label="当前时间" value={`${currentTime.toFixed(3)}s`} />
+            <InfoCard label="当前 Step" value={`${currentStep} / ${totalSteps - 1}`} />
+            <InfoCard label="当前小节" value={`${currentBar + 1} / ${bars}`} />
+            <InfoCard label="总时长" value={`${duration.toFixed(2)}s`} />
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
+            <label style={fieldWrapStyle}>
+              <span style={labelStyle}>Loop Start</span>
+              <input
+                type="number"
+                step={stepDuration}
+                value={loopStart ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    setLoopStart(null);
+                    return;
+                  }
+                  setLoopStartAt(Number(v));
+                }}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={fieldWrapStyle}>
+              <span style={labelStyle}>Loop End</span>
+              <input
+                type="number"
+                step={stepDuration}
+                value={loopEnd ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    setLoopEnd(null);
+                    return;
+                  }
+                  setLoopEndAt(Number(v));
+                }}
+                style={inputStyle}
+              />
+            </label>
+
+            <div style={{ opacity: 0.8 }}>
+              快捷键：Space / Enter / [ / ] / ← → / Shift+← → / - / + / 0
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "#141923",
+              border: "1px solid #283142",
+              borderRadius: 12,
+              padding: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, opacity: 0.75, marginBottom: 10 }}>小节导航</div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                maxHeight: 120,
+                overflowY: "auto",
+              }}
+            >
+              {Array.from({ length: bars }).map((_, i) => {
+                const active = i === currentBar;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => jumpToBar(i)}
+                    style={{
+                      background: active ? "#3b82f6" : "#202735",
+                      color: "#fff",
+                      border: "1px solid " + (active ? "#60a5fa" : "#344155"),
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                      minWidth: 54,
+                    }}
+                  >
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <button
-        onClick={() => setMetronomeEnabled((v) => !v)}
-        style={{
-          marginTop: 10,
-          padding: "10px 16px",
-          borderRadius: 10,
-          border: metronomeEnabled ? "1px solid #22c55e" : "1px solid #475569",
-          background: metronomeEnabled ? "rgba(34,197,94,0.18)" : "#1e293b",
-          color: "#fff",
-          fontWeight: 700,
-          cursor: "pointer",
-          boxShadow: metronomeEnabled ? "0 0 0 2px rgba(34,197,94,0.15)" : "none",
-        }}
-      >
-        {metronomeEnabled ? "节拍器：已开启" : "节拍器：已关闭"}
-      </button>
-
-      <div style={{ marginTop: 20 }}>
         <ScoreView
-          exportMode={false}
-          lanes={LANES}
-          totalCols={totalCols}
-          stepsPerBar={stepsPerBar}
-          currentBeatInBar={1}
-          currentCol={snappedCol}
-          grid={grid}
-          handleClick={(col) => {
-            const t = pageStart + col / colsPerSecond;
-
-            if (isSelectingLoopStart) {
-              setLoopStart(t);
-              setIsSelectingLoopStart(false);
-            } else {
-              setLoopEnd(t);
-              setIsSelectingLoopStart(true);
-            }
-          }}
-          onLoopStartDrag={(col) => {
-            const t = pageStart + col / colsPerSecond;
-            setLoopStart(Math.min(t, loopEnd));
-          }}
-          
-          onLoopEndDrag={(col) => {
-            const t = pageStart + col / colsPerSecond;
-            setLoopEnd(Math.max(t, loopStart));
-          }}
-          loopStartCol={Math.max(
-            0,
-            Math.min(
-              totalCols - 1,
-              Math.floor((loopStart - pageStart) * colsPerSecond)
-            )
-          )}
-          loopEndCol={Math.max(
-            0,
-            Math.min(
-              totalCols - 1,
-              Math.floor((loopEnd - pageStart) * colsPerSecond)
-            )
-          )}
-          playheadX={playheadX}
+          duration={duration}
+          bpm={bpm}
+          beatsPerBar={beatsPerBar}
+          stepsPerBeat={stepsPerBeat}
+          currentTime={currentTime}
+          currentStep={currentStep}
+          loopStart={loopStart}
+          loopEnd={loopEnd}
+          hasLoop={hasLoop}
+          trackSteps={stepMap}
+          onGridTimeAction={handleGridTimeAction}
+          onSeek={seekToSnapped}
+          onSetLoopStart={setLoopStartAt}
+          onSetLoopEnd={setLoopEndAt}
+          snapTime={snapTime}
+          stepWidth={stepWidth}
+          zoom={zoom}
+          onMiniMapSeek={seekToSnapped}
         />
       </div>
     </div>
   );
 }
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#141923",
+        border: "1px solid #283142",
+        borderRadius: 12,
+        padding: 12,
+      }}
+    >
+      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+}
+
+function buttonStyle(active: boolean): React.CSSProperties {
+  return {
+    background: active ? "#3b82f6" : "#202735",
+    color: "#fff",
+    border: "1px solid " + (active ? "#60a5fa" : "#344155"),
+    borderRadius: 10,
+    padding: "10px 14px",
+    cursor: "pointer",
+    fontWeight: 600,
+  };
+}
+
+const fieldWrapStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.75,
+};
+
+const inputStyle: React.CSSProperties = {
+  background: "#0f141c",
+  color: "#fff",
+  border: "1px solid #334155",
+  borderRadius: 8,
+  padding: "8px 10px",
+  minWidth: 140,
+};
