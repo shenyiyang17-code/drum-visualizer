@@ -39,6 +39,7 @@ export default function ScoreView({
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [pageStartBarOverride, setPageStartBarOverride] = useState<number | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -73,7 +74,8 @@ export default function ScoreView({
 
   // Paged view: 5 bars at a time, advancing by 4 bars
   const currentBar = Math.floor(currentStep / stepsPerBar);
-  const pageStartBar = Math.floor(currentBar / 4) * 4;
+  const autoPageStartBar = Math.floor(currentBar / 4) * 4;
+  const pageStartBar = pageStartBarOverride ?? autoPageStartBar;
   const pageStartStep = pageStartBar * stepsPerBar;
   const visibleStepCount = stepsPerBar * 5;
   const previewBarStartStep = pageStartStep + stepsPerBar * 4;
@@ -92,6 +94,15 @@ export default function ScoreView({
   const beatWidth = stepsPerBeat * stepWidth;
   const visibleWidth = barWidth * 5;
   const currentBeatLeft = (currentBeatStartStep - pageStartStep) * stepWidth;
+
+  useEffect(() => {
+    if (pageStartBarOverride === null) return;
+
+    // Return to automatic paging once playback enters the selected page group.
+    if (autoPageStartBar === pageStartBarOverride) {
+      setPageStartBarOverride(null);
+    }
+  }, [autoPageStartBar, pageStartBarOverride]);
 
   return (
     <div
@@ -159,10 +170,12 @@ export default function ScoreView({
                 const barX = barIndex * barWidth;
                 const isPreviewBar = barIndex === 4;
                 const barNumber = pageStartBar + barIndex + 1;
+                const targetPageStartBar = Math.floor((barNumber - 1) / 4) * 4;
 
                 return (
                   <div
                     key={`bar-${barIndex}`}
+                    onClick={() => setPageStartBarOverride(targetPageStartBar)}
                     style={{
                       position: "absolute",
                       left: barX,
@@ -175,6 +188,8 @@ export default function ScoreView({
                       color: isPreviewBar ? "#9ca3af" : "#e5e7eb",
                       fontWeight: 700,
                       fontSize: 14,
+                      cursor: "pointer",
+                      userSelect: "none",
                     }}
                   >
                     {isPreviewBar ? "预备" : barNumber}
