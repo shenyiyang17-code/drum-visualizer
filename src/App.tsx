@@ -9,7 +9,7 @@ type DrumEvent = {
   track: TrackName;
 };
 
-type EditMode = "play" | "setLoopStart" | "setLoopEnd";
+type EditMode = "setLoopStart" | "setLoopEnd" | null;
 
 type DrumDataShape =
   | DrumEvent[]
@@ -131,7 +131,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const [mode, setMode] = useState<EditMode>("play");
+  const [mode, setMode] = useState<EditMode>(null);
 
   const [loopStart, setLoopStart] = useState<number | null>(null);
   const [loopEnd, setLoopEnd] = useState<number | null>(null);
@@ -296,20 +296,20 @@ export default function App() {
     (t: number) => {
       const target = snapTime(t);
 
-      if (mode === "play") {
+      if (mode === null) {
         seekTo(target);
         return;
       }
 
       if (mode === "setLoopStart") {
         setLoopStartAt(target);
-        setMode("play");
+        setMode(null);
         return;
       }
 
       if (mode === "setLoopEnd") {
         setLoopEndAt(target);
-        setMode("play");
+        setMode(null);
         return;
       }
     },
@@ -598,24 +598,21 @@ export default function App() {
             background: "#1a1f29",
             border: "1px solid #2a3140",
             borderRadius: 14,
-            padding: 14,
+            padding: 18,
             display: "grid",
-            gap: 10,
+            gap: 14,
           }}
         >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "stretch" }}>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
-                alignItems: "center",
-                padding: 10,
-                background: "#141923",
-                border: "1px solid #283142",
-                borderRadius: 12,
-              }}
-            >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 14,
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
               <button onClick={togglePlay} style={buttonStyle(isPlaying)}>
                 播放
               </button>
@@ -627,26 +624,23 @@ export default function App() {
                 回到起点
               </button>
 
-              <button onClick={() => setMode("play")} style={buttonStyle(mode === "play")}>
-                跳转模式
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                padding: 10,
-                background: "#141923",
-                border: "1px solid #283142",
-                borderRadius: 12,
-              }}
-            >
               <button
                 onClick={() => setMetronomeEnabled((v) => !v)}
                 style={buttonStyle(metronomeEnabled)}
               >
                 节拍器
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              <button onClick={zoomOut} style={buttonStyle(false)}>
+                缩小
+              </button>
+              <button onClick={resetZoom} style={buttonStyle(false)}>
+                默认
+              </button>
+              <button onClick={zoomIn} style={buttonStyle(false)}>
+                放大
               </button>
             </div>
           </div>
@@ -655,9 +649,9 @@ export default function App() {
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 8,
+              gap: 12,
               alignItems: "flex-end",
-              padding: 10,
+              padding: 14,
               background: "#141923",
               border: "1px solid #283142",
               borderRadius: 12,
@@ -668,6 +662,13 @@ export default function App() {
               style={buttonStyle(mode === "setLoopStart")}
             >
               设置循环开始
+            </button>
+
+            <button
+              onClick={() => setMode("setLoopEnd")}
+              style={buttonStyle(mode === "setLoopEnd")}
+            >
+              设置循环结束
             </button>
 
             <label style={{ ...fieldWrapStyle, gap: 4 }}>
@@ -706,63 +707,43 @@ export default function App() {
               />
             </label>
 
-            <button
-              onClick={() => setMode("setLoopEnd")}
-              style={buttonStyle(mode === "setLoopEnd")}
-            >
-              设置循环结束
-            </button>
-
             <button onClick={clearLoop} style={buttonStyle(false)}>
               清除循环（Delete）
             </button>
-          </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <button onClick={zoomOut} style={buttonStyle(false)}>
-              缩小
-            </button>
-            <button onClick={resetZoom} style={buttonStyle(false)}>
-              默认
-            </button>
-            <button onClick={zoomIn} style={buttonStyle(false)}>
-              放大
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: 6,
-              background: "#141923",
-              border: "1px solid #283142",
-              borderRadius: 12,
-              width: "fit-content",
-            }}
-          >
-            <button onClick={decreasePlaybackSpeed} style={buttonStyle(false)}>
-              -0.1
-            </button>
             <div
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: 6,
                 background: "#0f141c",
                 border: "1px solid #334155",
-                borderRadius: 8,
-                padding: "10px 12px",
-                fontWeight: 800,
-                minWidth: 78,
-                textAlign: "center",
-                fontVariantNumeric: "tabular-nums",
-                letterSpacing: 0.2,
+                borderRadius: 10,
               }}
             >
-              {playbackSpeed.toFixed(1)}x
+              <button onClick={decreasePlaybackSpeed} style={buttonStyle(false)}>
+                -0.1
+              </button>
+              <div
+                style={{
+                  background: "#141923",
+                  border: "1px solid #334155",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  fontWeight: 800,
+                  minWidth: 82,
+                  textAlign: "center",
+                  fontVariantNumeric: "tabular-nums",
+                  letterSpacing: 0.2,
+                }}
+              >
+                {playbackSpeed.toFixed(1)}x
+              </div>
+              <button onClick={increasePlaybackSpeed} style={buttonStyle(false)}>
+                +0.1
+              </button>
             </div>
-            <button onClick={increasePlaybackSpeed} style={buttonStyle(false)}>
-              +0.1
-            </button>
           </div>
 
           <div
