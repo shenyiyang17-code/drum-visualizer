@@ -660,10 +660,16 @@ export default function App() {
           >
             <div
               style={{
-                display: "flex",
+                display: "inline-flex",
                 flexWrap: "wrap",
-                gap: 12,
+                gap: 10,
                 alignItems: "center",
+                width: "fit-content",
+                maxWidth: "100%",
+                padding: 8,
+                background: "rgba(15, 20, 28, 0.78)",
+                border: "1px solid rgba(71, 85, 105, 0.55)",
+                borderRadius: 12,
               }}
             >
               <button
@@ -750,7 +756,15 @@ export default function App() {
                 设置循环结束
               </button>
 
-              <button onClick={clearLoop} style={buttonStyle(false)}>
+              <button
+                onClick={clearLoop}
+                style={{
+                  ...buttonStyle(false),
+                  background: "#161c27",
+                  color: "#cbd5e1",
+                  border: "1px solid #475569",
+                }}
+              >
                 清除循环（Delete）
               </button>
             </div>
