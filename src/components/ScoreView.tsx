@@ -1,3 +1,4 @@
+console.log("ScoreView loaded - current file");
 import React from "react";
 
 type Lane = {
@@ -15,13 +16,15 @@ type Props = {
   currentCol: number;
   grid: Record<string, string[]>;
   handleClick: (col: number) => void;
+  playheadX: number;
+  loopStartCol: number;
+  loopEndCol: number;
 };
 
 function getCellStyle(
   lane: string,
-  isCurrent: boolean,
   isBarStart: boolean,
-  isCurrentBeatGroup: boolean,
+  isPreviewBar: boolean,
   hasValue: boolean
 ): React.CSSProperties {
   const base: React.CSSProperties = {
@@ -33,28 +36,33 @@ function getCellStyle(
     lineHeight: "24px",
     cursor: "pointer",
     userSelect: "none",
-    border: isBarStart ? "2px solid #64748b" : "1px solid #31384a",
-    background: isCurrent ? "#ffd166" : isCurrentBeatGroup ? "#253046" : isBarStart ? "#20283a" : "#1b2130",
+    border: isPreviewBar
+      ? "2px dashed #444c60"
+      : isBarStart
+      ? "2px solid #64748b"
+      : "1px solid #31384a",
+    background: isPreviewBar
+      ? "rgba(120,130,160,0.12)"
+      : isBarStart
+      ? "#20283a"
+      : "#1b2130",
     color: hasValue ? "#0b0f14" : "#5f6b85",
     fontWeight: hasValue ? 900 : 500,
-    boxShadow: isCurrent
-      ? "0 0 0 3px rgba(255,209,102,0.22), inset 0 0 0 1px rgba(255,255,255,0.16)"
-      : "none",
     fontSize: hasValue ? 16 : 14,
     flex: "0 0 auto",
+    position: "relative",
+    zIndex: 2,
+    overflow: "hidden",
   };
 
   if (!hasValue) return base;
 
   if (lane === "hh") {
-    base.background = isCurrent ? "#ffd166" : "#8ee7f2";
-    base.color = "#0b0f14";
+    base.background = isPreviewBar ? "rgba(142,231,242,0.4)" : "#8ee7f2";
   } else if (lane === "sd") {
-    base.background = isCurrent ? "#ffd166" : "#f3f4f6";
-    base.color = "#0b0f14";
+    base.background = isPreviewBar ? "rgba(243,244,246,0.4)" : "#f3f4f6";
   } else if (lane === "bd") {
-    base.background = isCurrent ? "#ffd166" : "#f6e58d";
-    base.color = "#0b0f14";
+    base.background = isPreviewBar ? "rgba(246,229,141,0.4)" : "#f6e58d";
   }
 
   return base;
@@ -69,29 +77,94 @@ export default function ScoreView({
   currentCol,
   grid,
   handleClick,
+  playheadX,
+  loopStartCol,
+  loopEndCol,
 }: Props) {
+  const safeLanes = lanes ?? [];
+  const safeGrid = grid ?? {};
+  const safeStepsPerBar = Math.max(1, stepsPerBar);
+  const totalBars = Math.ceil(totalCols / safeStepsPerBar);
+
+  const start = Math.max(0, Math.min(loopStartCol ?? 0, loopEndCol ?? 0));
+  const end = Math.min(totalCols - 1, Math.max(loopStartCol ?? 0, loopEndCol ?? 0));
+
   return (
     <div
       style={{
+        position: "relative",
         background: exportMode ? "#ffffff" : "rgba(255,255,255,0.03)",
-        border: exportMode ? "1px solid rgba(15,23,42,0.08)" : "1px solid #2c3344",
+        border: exportMode
+          ? "1px solid rgba(15,23,42,0.08)"
+          : "1px solid #2c3344",
         borderRadius: 16,
         padding: 16,
-        boxShadow: exportMode ? "none" : "0 10px 30px rgba(0,0,0,0.18)",
       }}
     >
       <div
         style={{
-          border: "1px solid #2c3344",
-          background: exportMode ? "#ffffff" : "rgba(255,255,255,0.02)",
-          borderRadius: 16,
-          overflowX: "auto",
-          padding: 16,
+          position: "absolute",
+          top: 56,
+          bottom: 16,
+          left: 88 + start * 28,
+          width: Math.max(0, (end - start + 1) * 28 - 4),
+          background: "rgba(255,255,255,0.04)",
+          borderRadius: 8,
+          pointerEvents: "none",
+          zIndex: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
-          <div style={{ width: 88, flex: "0 0 88px" }} />
-          {Array.from({ length: totalCols }).map((_, i) => (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: 2,
+            background: "rgba(255,255,255,0.18)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            right: 0,
+            width: 2,
+            background: "rgba(255,255,255,0.18)",
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          position: "absolute",
+          top: 56,
+          bottom: 16,
+          left: 88 + playheadX,
+          width: 8,
+          background: "rgba(255, 77, 109, 0.3)",
+          borderRadius: 4,
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          marginBottom: 14,
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        <div style={{ width: 88 }} />
+        {Array.from({ length: totalCols }).map((_, i) => {
+          const barIndex = Math.floor(i / safeStepsPerBar);
+          const isPreviewBar = barIndex === totalBars - 1;
+
+          return (
             <div
               key={i}
               onClick={() => handleClick(i)}
@@ -103,98 +176,116 @@ export default function ScoreView({
                 textAlign: "center",
                 lineHeight: "24px",
                 cursor: "pointer",
-                border:
-                i % stepsPerBar === 0
+                border: isPreviewBar
+                  ? "2px dashed #444c60"
+                  : i % safeStepsPerBar === 0
                   ? "3px solid #64748b"
-                  : i % Math.max(1, stepsPerBar / 4) === 0
-                  ? "1px solid #64748b"
                   : "1px solid #2a3142",
-                    background:
-                    i === currentCol
-                      ? "#ffd166"
-                      : Math.floor((i % stepsPerBar) / (stepsPerBar / 4)) + 1 === currentBeatInBar
-                      ? "#253046"
-                      : i % Math.max(1, stepsPerBar / 4) === 0
-                      ? "#1a2130"
-                      : "#161b24",
-                color: i === currentCol ? "#000" : "#8792ab",
+                background: isPreviewBar
+                  ? "rgba(120,130,160,0.12)"
+                  : "#161b24",
+                color: "#8792ab",
                 fontSize: 11,
                 fontWeight: 700,
-                flex: "0 0 auto",
+                position: "relative",
+                zIndex: 2,
               }}
             >
-              {Math.floor((i % stepsPerBar) / (stepsPerBar / 4)) + 1}
+              {Math.floor((i % safeStepsPerBar) / Math.max(1, safeStepsPerBar / 4)) + 1}
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {["上层镲片", "中层鼓件", "底鼓"].map((group) => {
-          const rows = lanes.filter((l) => l.group === group);
-          return (
-            <div key={group} style={{ marginBottom: 22 }}>
-              <div
-                style={{
-                  color: exportMode ? "#cbd5e1" : "#dce6ff",
-                  fontWeight: 800,
-                  margin: "4px 0 10px 88px",
-                  fontSize: 18,
-                }}
-              >
-                {group}
-              </div>
+      {["上层镲片", "中层鼓件", "底鼓"].map((group) => {
+        const rows = safeLanes.filter((l) => l.group === group);
 
-              {rows.map((lane) => (
-                <div key={lane.key} style={{ display: "flex", marginBottom: 8, alignItems: "center" }}>
+        if (rows.length === 0) return null;
+
+        return (
+          <div
+            key={group}
+            style={{
+              marginBottom: 22,
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            <div
+              style={{
+                color: exportMode ? "#0f172a" : "#dce6ff",
+                fontWeight: 800,
+                margin: "4px 0 10px 88px",
+                fontSize: 18,
+              }}
+            >
+              {group}
+            </div>
+
+            {rows.map((lane) => {
+              const rowValues =
+                safeGrid[lane.key] ?? Array.from({ length: totalCols }, () => "");
+
+              return (
+                <div key={lane.key} style={{ display: "flex", marginBottom: 8 }}>
                   <div
                     style={{
                       width: 88,
-                      flex: "0 0 88px",
-                      fontSize: 18,
                       fontWeight: 800,
-                      color: exportMode ? "#cbd5e1" : "#d4dcf0",
-                      paddingLeft: 8,
+                      color: exportMode ? "#0f172a" : "#dce6ff",
                     }}
                   >
                     {lane.label}
                   </div>
 
-                  {grid[lane.key]?.map((v, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleClick(i)}
-                      style={getCellStyle(
-                        lane.key,
-                        i === currentCol,
-                        i % stepsPerBar === 0,
-                        false,
-                        Boolean(v)
-                      )}
-                    >
-                      {v}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          );
-        })}
+                  {Array.from({ length: totalCols }).map((_, i) => {
+                    const v = rowValues[i] ?? "";
+                    const barIndex = Math.floor(i / safeStepsPerBar);
+                    const isPreviewBar = barIndex === totalBars - 1;
+                    const hasValue = Boolean(v);
 
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            flexWrap: "wrap",
-            color: exportMode ? "#475569" : "#9aa4ba",
-            fontSize: 14,
-            marginTop: 8,
-          }}
-        >
-          <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#8ee7f2", color: "#000", marginRight: 6 }}>× / ✦</span> 镲片</div>
-          <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f3f4f6", color: "#000", marginRight: 6 }}>◎</span> 军鼓</div>
-          <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#f6e58d", color: "#000", marginRight: 6 }}>■</span> 底鼓</div>
-          <div><span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, background: "#ffd166", color: "#000", marginRight: 6 }}>▌</span> 播放头</div>
-        </div>
-      </div>
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => handleClick(i)}
+                        style={getCellStyle(
+                          lane.key,
+                          i % safeStepsPerBar === 0,
+                          isPreviewBar,
+                          hasValue
+                        )}
+                      >
+                        {hasValue && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 2,
+                              bottom: 2,
+                              left: "50%",
+                              width: 3,
+                              transform: "translateX(-50%)",
+                              background:
+                                lane.key === "hh"
+                                  ? "#00e5ff"
+                                  : lane.key === "sd"
+                                  ? "#ffffff"
+                                  : "#ffd54f",
+                              opacity: 0.9,
+                              borderRadius: 2,
+                              pointerEvents: "none",
+                            }}
+                          />
+                        )}
+                        <span style={{ position: "relative" }}>{v}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

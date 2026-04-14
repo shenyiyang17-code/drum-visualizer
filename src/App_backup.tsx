@@ -1,3 +1,4 @@
+console.log("App loaded - current file");
 import { useEffect, useMemo, useRef, useState } from "react";
 import ScoreView from "./components/ScoreView";
 
@@ -25,37 +26,12 @@ export default function App() {
 
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(8);
-  const [loopStartInput, setLoopStartInput] = useState("0");
-  const [loopEndInput, setLoopEndInput] = useState("8");
   const [isSelectingLoopStart, setIsSelectingLoopStart] = useState(true);
 
   const [audioSrc] = useState("/Michael Jackson Billie Jean.wav");
   const [metronomeEnabled, setMetronomeEnabled] = useState(true);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const applyLoopRange = () => {
-    const start = Number(loopStartInput);
-    const end = Number(loopEndInput);
-
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (start < 0 || end < 0) return;
-
-    const fixedStart = Math.min(start, end);
-    const fixedEnd = Math.max(start, end);
-
-    setLoopStart(fixedStart);
-    setLoopEnd(fixedEnd);
-    setIsSelectingLoopStart(true);
-  };
-
-  const clearLoopRange = () => {
-    setLoopStart(0);
-    setLoopEnd(secondsPerPage);
-    setLoopStartInput("0");
-    setLoopEndInput(String(secondsPerPage));
-    setIsSelectingLoopStart(true);
-  };
 
   useEffect(() => {
     fetch("./drum_events.json")
@@ -99,7 +75,7 @@ export default function App() {
       gain.connect(ctx.destination);
 
       osc.frequency.value = isDownBeat ? 1800 : 500;
-      gain.gain.value = isDownBeat ? 0.35 : 0.1;
+      gain.gain.value = isDownBeat ? 0.35 : 0.05;
 
       osc.start();
       osc.stop(ctx.currentTime + 0.05);
@@ -147,11 +123,6 @@ export default function App() {
     }
   }, [time, loopStart, loopEnd]);
 
-  useEffect(() => {
-    setLoopStartInput(loopStart.toFixed(2));
-    setLoopEndInput(loopEnd.toFixed(2));
-  }, [loopStart, loopEnd]);
-
   const totalCols = stepsPerBar * barsPerPage;
   const colsPerSecond = (stepsPerBar / 4) / secondsPerBeat;
 
@@ -195,66 +166,19 @@ export default function App() {
     >
       <audio ref={audioRef} src={audioSrc} controls style={{ width: 400 }} />
 
-      <div style={{ marginTop: 10, lineHeight: 1.8 }}>
-        <div>
-          当前操作：
-          {isSelectingLoopStart ? "点击谱面选择循环开始" : "点击谱面选择循环结束"}
-        </div>
-        <div>
-          循环开始：{loopStart.toFixed(2)}s ｜ 循环结束：{loopEnd.toFixed(2)}s
-        </div>
+      <div style={{ marginTop: 10 }}>
+        时间: {time.toFixed(2)} ｜ 当前列: {snappedCol}
+      </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            marginTop: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <label>
-            开始：
-            <input
-              type="number"
-              step="0.01"
-              value={loopStartInput}
-              onChange={(e) => setLoopStartInput(e.target.value)}
-              style={{ marginLeft: 6, width: 90 }}
-            />
-          </label>
-
-          <label>
-            结束：
-            <input
-              type="number"
-              step="0.01"
-              value={loopEndInput}
-              onChange={(e) => setLoopEndInput(e.target.value)}
-              style={{ marginLeft: 6, width: 90 }}
-            />
-          </label>
-
-          <button onClick={applyLoopRange}>应用循环</button>
-          <button onClick={clearLoopRange}>清除循环</button>
-        </div>
+      <div style={{ marginTop: 10 }}>
+        当前操作：{isSelectingLoopStart ? "选择循环开始" : "选择循环结束"}
       </div>
 
       <button
         onClick={() => setMetronomeEnabled((v) => !v)}
-        style={{
-          marginTop: 10,
-          padding: "10px 16px",
-          borderRadius: 10,
-          border: metronomeEnabled ? "1px solid #22c55e" : "1px solid #475569",
-          background: metronomeEnabled ? "rgba(34,197,94,0.18)" : "#1e293b",
-          color: "#fff",
-          fontWeight: 700,
-          cursor: "pointer",
-          boxShadow: metronomeEnabled ? "0 0 0 2px rgba(34,197,94,0.15)" : "none",
-        }}
+        style={{ marginTop: 10 }}
       >
-        {metronomeEnabled ? "节拍器：已开启" : "节拍器：已关闭"}
+        {metronomeEnabled ? "关节拍器" : "开节拍器"}
       </button>
 
       <div style={{ marginTop: 20 }}>
@@ -271,25 +195,21 @@ export default function App() {
 
             if (isSelectingLoopStart) {
               setLoopStart(t);
+              if (t > loopEnd) setLoopEnd(t);
               setIsSelectingLoopStart(false);
             } else {
               setLoopEnd(t);
+              if (t < loopStart) setLoopStart(t);
               setIsSelectingLoopStart(true);
             }
           }}
           loopStartCol={Math.max(
             0,
-            Math.min(
-              totalCols - 1,
-              Math.floor((loopStart - pageStart) * colsPerSecond)
-            )
+            Math.min(totalCols - 1, Math.floor((loopStart - pageStart) * colsPerSecond))
           )}
           loopEndCol={Math.max(
             0,
-            Math.min(
-              totalCols - 1,
-              Math.floor((loopEnd - pageStart) * colsPerSecond)
-            )
+            Math.min(totalCols - 1, Math.floor((loopEnd - pageStart) * colsPerSecond))
           )}
           playheadX={playheadX}
         />
