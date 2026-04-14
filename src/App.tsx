@@ -598,42 +598,66 @@ export default function App() {
             background: "#1a1f29",
             border: "1px solid #2a3140",
             borderRadius: 14,
-            padding: 16,
+            padding: 14,
             display: "grid",
-            gap: 12,
+            gap: 10,
           }}
         >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <button onClick={togglePlay} style={buttonStyle(isPlaying)}>
-              播放
-            </button>
-
-            <button
-              onClick={() => seekTo(hasLoop && loopStart !== null ? loopStart : 0)}
-              style={buttonStyle(false)}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "stretch" }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                padding: 10,
+                background: "#141923",
+                border: "1px solid #283142",
+                borderRadius: 12,
+              }}
             >
-              回到起点
-            </button>
+              <button onClick={togglePlay} style={buttonStyle(isPlaying)}>
+                播放
+              </button>
 
-            <button onClick={() => setMode("play")} style={buttonStyle(mode === "play")}>
-              跳转模式
-            </button>
+              <button
+                onClick={() => seekTo(hasLoop && loopStart !== null ? loopStart : 0)}
+                style={buttonStyle(false)}
+              >
+                回到起点
+              </button>
 
-            <button
-              onClick={() => setMetronomeEnabled((v) => !v)}
-              style={buttonStyle(metronomeEnabled)}
+              <button onClick={() => setMode("play")} style={buttonStyle(mode === "play")}>
+                跳转模式
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: 10,
+                background: "#141923",
+                border: "1px solid #283142",
+                borderRadius: 12,
+              }}
             >
-              节拍器
-            </button>
+              <button
+                onClick={() => setMetronomeEnabled((v) => !v)}
+                style={buttonStyle(metronomeEnabled)}
+              >
+                节拍器
+              </button>
+            </div>
           </div>
 
           <div
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 10,
+              gap: 8,
               alignItems: "flex-end",
-              padding: 12,
+              padding: 10,
               background: "#141923",
               border: "1px solid #283142",
               borderRadius: 12,
