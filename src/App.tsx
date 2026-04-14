@@ -706,19 +706,32 @@ export default function App() {
             </button>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: 6,
+              background: "#141923",
+              border: "1px solid #283142",
+              borderRadius: 12,
+              width: "fit-content",
+            }}
+          >
             <button onClick={decreasePlaybackSpeed} style={buttonStyle(false)}>
               -0.1
             </button>
             <div
               style={{
-                background: "#141923",
-                border: "1px solid #283142",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontWeight: 700,
-                minWidth: 76,
+                background: "#0f141c",
+                border: "1px solid #334155",
+                borderRadius: 8,
+                padding: "10px 12px",
+                fontWeight: 800,
+                minWidth: 78,
                 textAlign: "center",
+                fontVariantNumeric: "tabular-nums",
+                letterSpacing: 0.2,
               }}
             >
               {playbackSpeed.toFixed(1)}x
