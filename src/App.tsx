@@ -663,7 +663,7 @@ export default function App() {
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
             <button onClick={decreasePlaybackSpeed} style={buttonStyle(false)}>
-              减速 (-0.1)
+              -0.1
             </button>
             <div
               style={{
@@ -679,7 +679,7 @@ export default function App() {
               {playbackSpeed.toFixed(1)}x
             </div>
             <button onClick={increasePlaybackSpeed} style={buttonStyle(false)}>
-              加速 (+0.1)
+              +0.1
             </button>
           </div>
 
