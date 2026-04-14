@@ -25,7 +25,7 @@ type DrumDataShape =
       }>;
     };
 
-const AUDIO_SRC = "/audio/drums.mp3";
+const AUDIO_SRC = "/Michael Jackson Billie Jean.wav";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -207,8 +207,10 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
 
+    console.log("play() called -- attempting audio.play()", { src: audio.src });
     try {
       await audio.play();
+      console.log("play() succeeded");
       setIsPlaying(true);
     } catch (err) {
       console.error("audio play failed:", err);
@@ -218,7 +220,9 @@ export default function App() {
   const pause = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    console.log("pause() called");
     audio.pause();
+    console.log("pause() executed");
     setIsPlaying(false);
   }, []);
 
@@ -340,6 +344,34 @@ export default function App() {
 
     audio.addEventListener("ended", onEnded);
     return () => audio.removeEventListener("ended", onEnded);
+  }, []);
+
+  // Audio lifecycle logging and error handling
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onLoadedMetadata = () => {
+      console.log("audio loadedmetadata", { duration: audio.duration, src: audio.src });
+    };
+
+    const onCanPlay = () => {
+      console.log("audio canplay", { src: audio.src });
+    };
+
+    const onError = (ev: any) => {
+      console.error("audio error event", ev, "audio.error:", audio.error, { src: audio.src });
+    };
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("error", onError);
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("error", onError);
+    };
   }, []);
 
   const ensureAudioContext = useCallback(() => {
@@ -520,7 +552,7 @@ export default function App() {
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      <audio ref={audioRef} src={AUDIO_SRC} preload="auto" />
+      <audio ref={audioRef} src={encodeURI(AUDIO_SRC)} preload="auto" />
 
       <div
         style={{
