@@ -320,10 +320,6 @@ export default function App() {
   const currentStep = Math.round(currentTime / stepDuration);
   const currentBar = Math.floor(currentStep / barSteps);
   const maxLoopInputValue = totalSteps * stepDuration;
-  const loopRangeSummary =
-    loopStart !== null && loopEnd !== null
-      ? `循环：${loopStart.toFixed(1)} → ${loopEnd.toFixed(1)}`
-      : "循环：未设置";
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -655,23 +651,13 @@ export default function App() {
             style={{
               display: "grid",
               gap: 10,
-              padding: 14,
-              background: "#141923",
-              border: "1px solid #283142",
-              borderRadius: 12,
+              padding: 16,
+              background: "linear-gradient(180deg, #161c27 0%, #131923 100%)",
+              border: "1px solid #334155",
+              borderRadius: 14,
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
             }}
           >
-            <div
-              style={{
-                width: "100%",
-                color: "#94a3b8",
-                fontSize: 12,
-                lineHeight: 1.4,
-              }}
-            >
-              {loopRangeSummary}
-            </div>
-
             <div
               style={{
                 display: "flex",
@@ -702,7 +688,17 @@ export default function App() {
                   }
                   setLoopStartAt(clamp(Number(v), 0, maxLoopInputValue));
                 }}
-                style={{ ...inputStyle, width: 112, minWidth: 112, maxWidth: 112, flex: "0 0 112px" }}
+                style={{
+                  ...inputStyle,
+                  width: 112,
+                  minWidth: 112,
+                  maxWidth: 112,
+                  flex: "0 0 112px",
+                  borderRadius: 10,
+                  border: "1px solid #475569",
+                  background: "#111722",
+                  padding: "0 12px",
+                }}
               />
 
               <div
@@ -734,7 +730,17 @@ export default function App() {
                   }
                   setLoopEndAt(clamp(Number(v), 0, maxLoopInputValue));
                 }}
-                style={{ ...inputStyle, width: 112, minWidth: 112, maxWidth: 112, flex: "0 0 112px" }}
+                style={{
+                  ...inputStyle,
+                  width: 112,
+                  minWidth: 112,
+                  maxWidth: 112,
+                  flex: "0 0 112px",
+                  borderRadius: 10,
+                  border: "1px solid #475569",
+                  background: "#111722",
+                  padding: "0 12px",
+                }}
               />
 
               <button
