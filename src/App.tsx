@@ -605,26 +605,82 @@ export default function App() {
         >
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <button onClick={togglePlay} style={buttonStyle(isPlaying)}>
-              {isPlaying ? "暂停" : "播放"}（Space）
+              播放
             </button>
 
             <button
               onClick={() => seekTo(hasLoop && loopStart !== null ? loopStart : 0)}
               style={buttonStyle(false)}
             >
-              回到起点（Enter）
+              回到起点
             </button>
 
             <button onClick={() => setMode("play")} style={buttonStyle(mode === "play")}>
-              播放模式
+              跳转模式
             </button>
 
+            <button
+              onClick={() => setMetronomeEnabled((v) => !v)}
+              style={buttonStyle(metronomeEnabled)}
+            >
+              节拍器
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              alignItems: "flex-end",
+              padding: 12,
+              background: "#141923",
+              border: "1px solid #283142",
+              borderRadius: 12,
+            }}
+          >
             <button
               onClick={() => setMode("setLoopStart")}
               style={buttonStyle(mode === "setLoopStart")}
             >
               设置循环开始
             </button>
+
+            <label style={{ ...fieldWrapStyle, gap: 4 }}>
+              <span style={labelStyle}>Loop Start</span>
+              <input
+                type="number"
+                step={stepDuration}
+                value={loopStart ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    setLoopStart(null);
+                    return;
+                  }
+                  setLoopStartAt(Number(v));
+                }}
+                style={inputStyle}
+              />
+            </label>
+
+            <label style={{ ...fieldWrapStyle, gap: 4 }}>
+              <span style={labelStyle}>Loop End</span>
+              <input
+                type="number"
+                step={stepDuration}
+                value={loopEnd ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    setLoopEnd(null);
+                    return;
+                  }
+                  setLoopEndAt(Number(v));
+                }}
+                style={inputStyle}
+              />
+            </label>
 
             <button
               onClick={() => setMode("setLoopEnd")}
@@ -633,19 +689,8 @@ export default function App() {
               设置循环结束
             </button>
 
-            
-
             <button onClick={clearLoop} style={buttonStyle(false)}>
               清除循环（Delete）
-            </button>
-
-            
-
-            <button
-              onClick={() => setMetronomeEnabled((v) => !v)}
-              style={buttonStyle(metronomeEnabled)}
-            >
-              节拍器 {metronomeEnabled ? "ON" : "OFF"}（M）
             </button>
           </div>
 
@@ -698,42 +743,6 @@ export default function App() {
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
-            <label style={fieldWrapStyle}>
-              <span style={labelStyle}>Loop Start</span>
-              <input
-                type="number"
-                step={stepDuration}
-                value={loopStart ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "") {
-                    setLoopStart(null);
-                    return;
-                  }
-                  setLoopStartAt(Number(v));
-                }}
-                style={inputStyle}
-              />
-            </label>
-
-            <label style={fieldWrapStyle}>
-              <span style={labelStyle}>Loop End</span>
-              <input
-                type="number"
-                step={stepDuration}
-                value={loopEnd ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "") {
-                    setLoopEnd(null);
-                    return;
-                  }
-                  setLoopEndAt(Number(v));
-                }}
-                style={inputStyle}
-              />
-            </label>
-
             <div style={{ opacity: 0.8 }}>
               快捷键：Space / Enter / [ / ] / ← → / Shift+← → / - / + / 0
             </div>
