@@ -136,7 +136,7 @@ export default function App() {
   const [loopStart, setLoopStart] = useState<number | null>(null);
   const [loopEnd, setLoopEnd] = useState<number | null>(null);
 
-  const [snapEnabled, setSnapEnabled] = useState(true);
+  const snapEnabled = true;
   const [metronomeEnabled, setMetronomeEnabled] = useState(false);
 
   const [stepWidth, setStepWidth] = useState(28);
@@ -150,11 +150,10 @@ export default function App() {
   const snapTime = useCallback(
     (t: number) => {
       const safe = clamp(t, 0, duration);
-      if (!snapEnabled) return safe;
       const snappedStep = Math.round(safe / stepDuration);
       return clamp(snappedStep * stepDuration, 0, duration);
     },
-    [duration, snapEnabled, stepDuration]
+    [duration, stepDuration]
   );
 
   const seekTo = useCallback(
@@ -294,6 +293,7 @@ export default function App() {
 
       if (mode === "setLoopEnd") {
         setLoopEndAt(target);
+        return;
       }
     },
     [mode, seekTo, setLoopEndAt, setLoopStartAt, snapTime]
@@ -461,11 +461,6 @@ export default function App() {
         return;
       }
 
-      if (e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        setSnapEnabled((v) => !v);
-        return;
-      }
 
       if (e.key.toLowerCase() === "m") {
         e.preventDefault();
@@ -610,24 +605,13 @@ export default function App() {
               设置循环结束
             </button>
 
-            <button onClick={() => setLoopStartAt(currentTime)} style={buttonStyle(false)}>
-              设当前为 Loop Start（[）
-            </button>
-
-            <button onClick={() => setLoopEndAt(currentTime)} style={buttonStyle(false)}>
-              设当前为 Loop End（]）
-            </button>
+            
 
             <button onClick={clearLoop} style={buttonStyle(false)}>
               清除 Loop（Delete）
             </button>
 
-            <button
-              onClick={() => setSnapEnabled((v) => !v)}
-              style={buttonStyle(snapEnabled)}
-            >
-              Snap {snapEnabled ? "ON" : "OFF"}（S）
-            </button>
+            
 
             <button
               onClick={() => setMetronomeEnabled((v) => !v)}
