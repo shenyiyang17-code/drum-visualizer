@@ -155,45 +155,74 @@ export default function ScoreView({
                 background: "#101722",
                 color: "#e5e7eb",
                 fontWeight: 700,
+                fontSize: 13,
               }}
             >
-              小节
+              当前页
             </div>
             <div
               style={{
-                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "0 14px",
                 width: visibleWidth,
                 height: "100%",
+                background: "#0f141c",
+                color: "#e5e7eb",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
               }}
             >
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#cbd5e1" }}>当前页：</span>
               {Array.from({ length: 5 }).map((_, barIndex) => {
-                const barX = barIndex * barWidth;
                 const isPreviewBar = barIndex === 4;
                 const barNumber = pageStartBar + barIndex + 1;
                 const targetPageStartBar = Math.floor((barNumber - 1) / 4) * 4;
 
                 return (
-                  <div
-                    key={`bar-${barIndex}`}
-                    onClick={() => setPageStartBarOverride(targetPageStartBar)}
-                    style={{
-                      position: "absolute",
-                      left: barX,
-                      top: 0,
-                      width: barWidth,
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: isPreviewBar ? "#9ca3af" : "#e5e7eb",
-                      fontWeight: 700,
-                      fontSize: 14,
-                      cursor: "pointer",
-                      userSelect: "none",
-                    }}
-                  >
-                    {isPreviewBar ? "预备" : barNumber}
-                  </div>
+                  <React.Fragment key={`bar-${barIndex}`}>
+                    {isPreviewBar ? (
+                      <>
+                        <span style={{ color: "#475569", fontWeight: 700 }}>|</span>
+                        <button
+                          onClick={() => setPageStartBarOverride(targetPageStartBar)}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            padding: 0,
+                            margin: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            color: "#94a3b8",
+                            fontWeight: 700,
+                            fontSize: 14,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <span>{barNumber}</span>
+                          <span style={{ fontSize: 12, color: "#64748b" }}>预备</span>
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setPageStartBarOverride(targetPageStartBar)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          padding: 0,
+                          margin: 0,
+                          color: "#f8fafc",
+                          fontWeight: 800,
+                          fontSize: 14,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {barNumber}
+                      </button>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </div>
