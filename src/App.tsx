@@ -277,6 +277,15 @@ export default function App() {
               setIsSelectingLoopStart(true);
             }
           }}
+          onLoopStartDrag={(col) => {
+            const t = pageStart + col / colsPerSecond;
+            setLoopStart(Math.min(t, loopEnd));
+          }}
+          
+          onLoopEndDrag={(col) => {
+            const t = pageStart + col / colsPerSecond;
+            setLoopEnd(Math.max(t, loopStart));
+          }}
           loopStartCol={Math.max(
             0,
             Math.min(

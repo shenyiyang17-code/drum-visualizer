@@ -1,4 +1,3 @@
-console.log("ScoreView loaded - current file");
 import React from "react";
 
 type Lane = {
@@ -19,6 +18,8 @@ type Props = {
   playheadX: number;
   loopStartCol: number;
   loopEndCol: number;
+  onLoopStartDrag: (col: number) => void;
+  onLoopEndDrag: (col: number) => void;
 };
 
 function getCellStyle(
@@ -80,17 +81,42 @@ export default function ScoreView({
   playheadX,
   loopStartCol,
   loopEndCol,
+  onLoopStartDrag,
+  onLoopEndDrag,
 }: Props) {
   const safeLanes = lanes ?? [];
   const safeGrid = grid ?? {};
   const safeStepsPerBar = Math.max(1, stepsPerBar);
   const totalBars = Math.ceil(totalCols / safeStepsPerBar);
 
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [draggingHandle, setDraggingHandle] = React.useState<null | "start" | "end">(null);
+
   const start = Math.max(0, Math.min(loopStartCol ?? 0, loopEndCol ?? 0));
   const end = Math.min(totalCols - 1, Math.max(loopStartCol ?? 0, loopEndCol ?? 0));
 
+  const getColFromClientX = (clientX: number, container: HTMLDivElement) => {
+    const rect = container.getBoundingClientRect();
+    const relativeX = clientX - rect.left - 88;
+    const col = Math.round(relativeX / 28);
+    return Math.max(0, Math.min(totalCols - 1, col));
+  };
+
   return (
     <div
+      ref={containerRef}
+      onMouseMove={(e) => {
+        if (!draggingHandle || !containerRef.current) return;
+        const col = getColFromClientX(e.clientX, containerRef.current);
+
+        if (draggingHandle === "start") {
+          onLoopStartDrag(col);
+        } else {
+          onLoopEndDrag(col);
+        }
+      }}
+      onMouseUp={() => setDraggingHandle(null)}
+      onMouseLeave={() => setDraggingHandle(null)}
       style={{
         position: "relative",
         background: exportMode ? "#ffffff" : "rgba(255,255,255,0.03)",
@@ -101,6 +127,7 @@ export default function ScoreView({
         padding: 16,
       }}
     >
+      {/* 循环区域 */}
       <div
         style={{
           position: "absolute",
@@ -114,28 +141,48 @@ export default function ScoreView({
           zIndex: 0,
         }}
       >
+        {/* 左拖拽边界 */}
         <div
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingHandle("start");
+          }}
           style={{
             position: "absolute",
             top: 0,
             bottom: 0,
             left: 0,
-            width: 2,
-            background: "rgba(255,255,255,0.18)",
+            width: 10,
+            marginLeft: -4,
+            background: "#60a5fa",
+            cursor: "ew-resize",
+            zIndex: 5,
+            pointerEvents: "auto",
           }}
         />
+
+        {/* 右拖拽边界 */}
         <div
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setDraggingHandle("end");
+          }}
           style={{
             position: "absolute",
             top: 0,
             bottom: 0,
             right: 0,
-            width: 2,
-            background: "rgba(255,255,255,0.18)",
+            width: 10,
+            marginRight: -4,
+            background: "#60a5fa",
+            cursor: "ew-resize",
+            zIndex: 5,
+            pointerEvents: "auto",
           }}
         />
       </div>
 
+      {/* 播放头 */}
       <div
         style={{
           position: "absolute",
@@ -150,6 +197,7 @@ export default function ScoreView({
         }}
       />
 
+      {/* 顶部拍号 */}
       <div
         style={{
           display: "flex",
