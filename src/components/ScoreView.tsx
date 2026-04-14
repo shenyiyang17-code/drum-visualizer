@@ -23,6 +23,8 @@ const STEP_WIDTH = 28;
 const ROW_HEIGHT = 56;
 const HEADER_HEIGHT = 40;
 const BAR_LABEL_HEIGHT = 30;
+const PRACTICE_BAR_COUNT = 4;
+const VISIBLE_BAR_COUNT = 5;
 
 export default function ScoreView({
   duration,
@@ -74,11 +76,11 @@ export default function ScoreView({
 
   // Paged view: 5 bars at a time, advancing by 4 bars
   const currentBar = Math.floor(currentStep / stepsPerBar);
-  const autoPageStartBar = Math.floor(currentBar / 4) * 4;
+  const autoPageStartBar = Math.floor(currentBar / PRACTICE_BAR_COUNT) * PRACTICE_BAR_COUNT;
   const pageStartBar = pageStartBarOverride ?? autoPageStartBar;
   const pageStartStep = pageStartBar * stepsPerBar;
-  const visibleStepCount = stepsPerBar * 5;
-  const previewBarStartStep = pageStartStep + stepsPerBar * 4;
+  const visibleStepCount = stepsPerBar * VISIBLE_BAR_COUNT;
+  const previewBarStartStep = pageStartStep + stepsPerBar * PRACTICE_BAR_COUNT;
   const currentBeatIndexInBar = Math.floor((currentStep % stepsPerBar) / stepsPerBeat);
   const currentBeatNumber = currentBeatIndexInBar + 1;
   const currentBeatStartStep = Math.floor(currentStep / stepsPerBeat) * stepsPerBeat;
@@ -92,8 +94,9 @@ export default function ScoreView({
   const stepWidth = fittedStepWidth;
   const barWidth = stepsPerBar * stepWidth;
   const beatWidth = stepsPerBeat * stepWidth;
-  const visibleWidth = barWidth * 5;
+  const visibleWidth = barWidth * VISIBLE_BAR_COUNT;
   const currentBeatLeft = (currentBeatStartStep - pageStartStep) * stepWidth;
+  const isCurrentBeatVisible = currentBeatLeft >= 0 && currentBeatLeft + beatWidth <= visibleWidth;
 
   useEffect(() => {
     if (pageStartBarOverride === null) return;
@@ -162,67 +165,51 @@ export default function ScoreView({
             </div>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "0 14px",
+                position: "relative",
                 width: visibleWidth,
                 height: "100%",
                 background: "#0f141c",
-                color: "#e5e7eb",
-                whiteSpace: "nowrap",
                 overflow: "hidden",
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#cbd5e1" }}>当前页：</span>
-              {Array.from({ length: 5 }).map((_, barIndex) => {
+              {Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barIndex) => {
                 const isPreviewBar = barIndex === 4;
                 const barNumber = pageStartBar + barIndex + 1;
                 const targetPageStartBar = Math.floor((barNumber - 1) / 4) * 4;
+                const barLeft = barIndex * barWidth;
 
                 return (
-                  <React.Fragment key={`bar-${barIndex}`}>
-                    {isPreviewBar ? (
-                      <>
-                        <span style={{ color: "#475569", fontWeight: 700 }}>|</span>
-                        <button
-                          onClick={() => setPageStartBarOverride(targetPageStartBar)}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            margin: 0,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            color: "#94a3b8",
-                            fontWeight: 700,
-                            fontSize: 14,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <span>{barNumber}</span>
-                          <span style={{ fontSize: 12, color: "#64748b" }}>预备</span>
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => setPageStartBarOverride(targetPageStartBar)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          padding: 0,
-                          margin: 0,
-                          color: "#f8fafc",
-                          fontWeight: 800,
-                          fontSize: 14,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {barNumber}
-                      </button>
-                    )}
-                  </React.Fragment>
+                  <button
+                    key={`bar-${barIndex}`}
+                    onClick={() => setPageStartBarOverride(targetPageStartBar)}
+                    style={{
+                      position: "absolute",
+                      left: barLeft,
+                      top: 0,
+                      width: barWidth,
+                      height: "100%",
+                      border: "none",
+                      borderLeft: barIndex === PRACTICE_BAR_COUNT ? "2px solid #3b82f6" : "1px solid rgba(148, 163, 184, 0.22)",
+                      borderRight:
+                        barIndex === VISIBLE_BAR_COUNT - 1
+                          ? "1px solid rgba(148, 163, 184, 0.22)"
+                          : "none",
+                      background: isPreviewBar ? "rgba(15, 23, 34, 0.9)" : "rgba(20, 25, 35, 0.92)",
+                      color: isPreviewBar ? "#94a3b8" : "#f8fafc",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      padding: 0,
+                      margin: 0,
+                      fontWeight: isPreviewBar ? 700 : 800,
+                      fontSize: 14,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>{barNumber}</span>
+                    {isPreviewBar ? <span style={{ fontSize: 12, color: "#64748b" }}>预备</span> : null}
+                  </button>
                 );
               })}
             </div>
@@ -262,31 +249,35 @@ export default function ScoreView({
                 background: "#0f141c",
               }}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  left: currentBeatLeft,
-                  top: 6,
-                  width: beatWidth,
-                  height: HEADER_HEIGHT - 12,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 10,
-                  background:
-                    currentBeatNumber === 1 ? "rgba(248, 250, 252, 0.16)" : "rgba(148, 163, 184, 0.12)",
-                  border:
-                    currentBeatNumber === 1
-                      ? "1px solid rgba(248, 250, 252, 0.4)"
-                      : "1px solid rgba(148, 163, 184, 0.28)",
-                  color: currentBeatNumber === 1 ? "#f8fafc" : "#cbd5e1",
-                  fontSize: currentBeatNumber === 1 ? 18 : 16,
-                  fontWeight: currentBeatNumber === 1 ? 800 : 700,
-                  boxSizing: "border-box",
-                }}
-              >
-                {currentBeatNumber}
-              </div>
+              {isCurrentBeatVisible ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: currentBeatLeft,
+                    top: 6,
+                    width: beatWidth,
+                    height: HEADER_HEIGHT - 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 10,
+                    background:
+                      currentBeatNumber === 1
+                        ? "rgba(248, 250, 252, 0.16)"
+                        : "rgba(148, 163, 184, 0.12)",
+                    border:
+                      currentBeatNumber === 1
+                        ? "1px solid rgba(248, 250, 252, 0.4)"
+                        : "1px solid rgba(148, 163, 184, 0.28)",
+                    color: currentBeatNumber === 1 ? "#f8fafc" : "#cbd5e1",
+                    fontSize: currentBeatNumber === 1 ? 18 : 16,
+                    fontWeight: currentBeatNumber === 1 ? 800 : 700,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {currentBeatNumber}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -387,25 +378,24 @@ export default function ScoreView({
                   })}
 
                   {/* Explicit bar separator lines */}
-                  {Array.from({ length: 5 }).map((_, barIndex) => {
-                    const barStep = (pageStartBar + barIndex) * stepsPerBar;
+                  {Array.from({ length: VISIBLE_BAR_COUNT + 1 }).map((_, separatorIndex) => {
+                    const barStep = (pageStartBar + separatorIndex) * stepsPerBar;
                     const barX = (barStep - pageStartStep) * stepWidth;
-                    const isPreviewBar = barIndex === 4;
-                    const isPageStart = barIndex === 0;
+                    const isPreviewBoundary = separatorIndex === PRACTICE_BAR_COUNT;
 
                     if (barX < 0 || barX > visibleStepCount * stepWidth) return null;
 
                     let lineWidth = 2;
-                    let lineColor = "rgba(148, 163, 184, 0.5)"; // Normal bar line: visible but subdued
+                    let lineColor = "rgba(148, 163, 184, 0.5)";
 
-                    if (isPreviewBar) {
+                    if (isPreviewBoundary) {
                       lineWidth = 4;
-                      lineColor = "#3b82f6"; // Preview separator (bright blue, very thick)
+                      lineColor = "#3b82f6";
                     }
 
                     return (
                       <div
-                        key={`sep-${barIndex}`}
+                        key={`sep-${separatorIndex}`}
                         style={{
                           position: "absolute",
                           left: barX - lineWidth / 2,

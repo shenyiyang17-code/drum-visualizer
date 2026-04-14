@@ -324,6 +324,10 @@ export default function App() {
       : mode === "setLoopEnd"
         ? "点击谱面设置结束点"
         : null;
+  const loopRangeSummary =
+    loopStart !== null && loopEnd !== null
+      ? `循环：${loopStart.toFixed(1)} → ${loopEnd.toFixed(1)}`
+      : "循环：未设置";
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -679,6 +683,17 @@ export default function App() {
               </div>
             ) : null}
 
+            <div
+              style={{
+                width: "100%",
+                color: "#94a3b8",
+                fontSize: 12,
+                lineHeight: 1.4,
+              }}
+            >
+              {loopRangeSummary}
+            </div>
+
             <button
               onClick={() => setMode("setLoopStart")}
               style={buttonStyle(mode === "setLoopStart")}
@@ -699,6 +714,7 @@ export default function App() {
                 type="number"
                 step={stepDuration}
                 value={loopStart ?? ""}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "") {
@@ -717,6 +733,7 @@ export default function App() {
                 type="number"
                 step={stepDuration}
                 value={loopEnd ?? ""}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "") {
