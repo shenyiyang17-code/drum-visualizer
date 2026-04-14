@@ -318,6 +318,12 @@ export default function App() {
 
   const currentStep = Math.round(currentTime / stepDuration);
   const currentBar = Math.floor(currentStep / barSteps);
+  const loopModeHint =
+    mode === "setLoopStart"
+      ? "点击谱面设置开始点"
+      : mode === "setLoopEnd"
+        ? "点击谱面设置结束点"
+        : null;
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -657,6 +663,22 @@ export default function App() {
               borderRadius: 12,
             }}
           >
+            {loopModeHint ? (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  minHeight: 22,
+                  color: "#93c5fd",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {loopModeHint}
+              </div>
+            ) : null}
+
             <button
               onClick={() => setMode("setLoopStart")}
               style={buttonStyle(mode === "setLoopStart")}
