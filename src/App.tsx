@@ -246,6 +246,7 @@ export default function App() {
   }, [isPlaying, pause, play]);
 
   const clearLoop = useCallback(() => {
+    setMode(null);
     setLoopStart(null);
     setLoopEnd(null);
   }, []);
@@ -657,10 +658,8 @@ export default function App() {
 
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 12,
-              alignItems: "flex-end",
+              display: "grid",
+              gap: 10,
               padding: 14,
               background: "#141923",
               border: "1px solid #283142",
@@ -694,25 +693,25 @@ export default function App() {
               {loopRangeSummary}
             </div>
 
-            <button
-              onClick={() => setMode("setLoopStart")}
-              style={buttonStyle(mode === "setLoopStart")}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+                alignItems: "center",
+              }}
             >
-              设置循环开始
-            </button>
+              <button
+                onClick={() => setMode("setLoopStart")}
+                style={buttonStyle(mode === "setLoopStart")}
+              >
+                设置循环开始
+              </button>
 
-            <button
-              onClick={() => setMode("setLoopEnd")}
-              style={buttonStyle(mode === "setLoopEnd")}
-            >
-              设置循环结束
-            </button>
-
-            <label style={{ ...fieldWrapStyle, gap: 4 }}>
-              <span style={labelStyle}>Loop Start</span>
               <input
                 type="number"
                 step={stepDuration}
+                aria-label="Loop Start"
                 value={loopStart ?? ""}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => {
@@ -723,15 +722,24 @@ export default function App() {
                   }
                   setLoopStartAt(Number(v));
                 }}
-                style={inputStyle}
+                style={{ ...inputStyle, width: 112 }}
               />
-            </label>
 
-            <label style={{ ...fieldWrapStyle, gap: 4 }}>
-              <span style={labelStyle}>Loop End</span>
+              <div
+                style={{
+                  color: "#94a3b8",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                }}
+              >
+                →
+              </div>
+
               <input
                 type="number"
                 step={stepDuration}
+                aria-label="Loop End"
                 value={loopEnd ?? ""}
                 onFocus={(e) => e.target.select()}
                 onChange={(e) => {
@@ -742,13 +750,20 @@ export default function App() {
                   }
                   setLoopEndAt(Number(v));
                 }}
-                style={inputStyle}
+                style={{ ...inputStyle, width: 112 }}
               />
-            </label>
 
-            <button onClick={clearLoop} style={buttonStyle(false)}>
-              清除循环（Delete）
-            </button>
+              <button
+                onClick={() => setMode("setLoopEnd")}
+                style={buttonStyle(mode === "setLoopEnd")}
+              >
+                设置循环结束
+              </button>
+
+              <button onClick={clearLoop} style={buttonStyle(false)}>
+                清除循环（Delete）
+              </button>
+            </div>
 
             <div
               style={{
