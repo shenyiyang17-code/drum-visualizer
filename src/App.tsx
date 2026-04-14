@@ -319,6 +319,7 @@ export default function App() {
 
   const currentStep = Math.round(currentTime / stepDuration);
   const currentBar = Math.floor(currentStep / barSteps);
+  const maxLoopInputValue = totalSteps * stepDuration;
   const loopModeHint =
     mode === "setLoopStart"
       ? "点击谱面设置开始点"
@@ -711,18 +712,19 @@ export default function App() {
               <input
                 type="number"
                 step={stepDuration}
+                min={0}
+                max={maxLoopInputValue}
                 aria-label="Loop Start"
                 value={loopStart ?? ""}
-                onFocus={(e) => e.target.select()}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "") {
                     setLoopStart(null);
                     return;
                   }
-                  setLoopStartAt(Number(v));
+                  setLoopStartAt(clamp(Number(v), 0, maxLoopInputValue));
                 }}
-                style={{ ...inputStyle, width: 112 }}
+                style={{ ...inputStyle, width: 112, minWidth: 112, maxWidth: 112, flex: "0 0 112px" }}
               />
 
               <div
@@ -739,18 +741,19 @@ export default function App() {
               <input
                 type="number"
                 step={stepDuration}
+                min={0}
+                max={maxLoopInputValue}
                 aria-label="Loop End"
                 value={loopEnd ?? ""}
-                onFocus={(e) => e.target.select()}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "") {
                     setLoopEnd(null);
                     return;
                   }
-                  setLoopEndAt(Number(v));
+                  setLoopEndAt(clamp(Number(v), 0, maxLoopInputValue));
                 }}
-                style={{ ...inputStyle, width: 112 }}
+                style={{ ...inputStyle, width: 112, minWidth: 112, maxWidth: 112, flex: "0 0 112px" }}
               />
 
               <button
