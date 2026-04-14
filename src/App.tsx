@@ -619,7 +619,7 @@ export default function App() {
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 14,
+              gap: 16,
               alignItems: "center",
               justifyContent: "space-between",
             }}
@@ -644,7 +644,7 @@ export default function App() {
               </button>
             </div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
               <button onClick={zoomOut} style={buttonStyle(false)}>
                 缩小
               </button>
@@ -698,7 +698,7 @@ export default function App() {
               style={{
                 display: "flex",
                 flexWrap: "wrap",
-                gap: 10,
+                gap: 12,
                 alignItems: "center",
               }}
             >
@@ -733,6 +733,9 @@ export default function App() {
                   fontSize: 16,
                   fontWeight: 700,
                   lineHeight: 1,
+                  height: 42,
+                  display: "flex",
+                  alignItems: "center",
                 }}
               >
                 →
@@ -777,6 +780,7 @@ export default function App() {
                 background: "#0f141c",
                 border: "1px solid #334155",
                 borderRadius: 10,
+                minHeight: 54,
               }}
             >
               <button onClick={decreasePlaybackSpeed} style={buttonStyle(false)}>
@@ -787,9 +791,14 @@ export default function App() {
                   background: "#141923",
                   border: "1px solid #334155",
                   borderRadius: 8,
-                  padding: "10px 14px",
+                  height: 42,
+                  padding: "0 14px",
                   fontWeight: 800,
                   minWidth: 82,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxSizing: "border-box",
                   textAlign: "center",
                   fontVariantNumeric: "tabular-nums",
                   letterSpacing: 0.2,
@@ -913,9 +922,14 @@ function buttonStyle(active: boolean): React.CSSProperties {
     color: "#fff",
     border: "1px solid " + (active ? "#60a5fa" : "#344155"),
     borderRadius: 10,
-    padding: "10px 14px",
+    minHeight: 42,
+    padding: "0 14px",
     cursor: "pointer",
     fontWeight: 600,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxSizing: "border-box",
   };
 }
 
@@ -935,6 +949,8 @@ const inputStyle: React.CSSProperties = {
   color: "#fff",
   border: "1px solid #334155",
   borderRadius: 8,
-  padding: "8px 10px",
+  height: 42,
+  padding: "0 10px",
   minWidth: 140,
+  boxSizing: "border-box",
 };
