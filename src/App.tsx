@@ -760,9 +760,10 @@ export default function App() {
                 onClick={clearLoop}
                 style={{
                   ...buttonStyle(false),
-                  background: "#161c27",
-                  color: "#cbd5e1",
-                  border: "1px solid #475569",
+                  background: "rgba(22, 28, 39, 0.58)",
+                  color: "#94a3b8",
+                  border: "1px solid rgba(71, 85, 105, 0.75)",
+                  fontWeight: 500,
                 }}
               >
                 清除循环（Delete）
