@@ -288,11 +288,13 @@ export default function App() {
 
       if (mode === "setLoopStart") {
         setLoopStartAt(target);
+        setMode("play");
         return;
       }
 
       if (mode === "setLoopEnd") {
         setLoopEndAt(target);
+        setMode("play");
         return;
       }
     },
@@ -608,7 +610,7 @@ export default function App() {
             
 
             <button onClick={clearLoop} style={buttonStyle(false)}>
-              清除 Loop（Delete）
+              清除循环（Delete）
             </button>
 
             
@@ -622,30 +624,15 @@ export default function App() {
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <button onClick={decreaseZoom} style={buttonStyle(false)}>-</button>
-            <button onClick={increaseZoom} style={buttonStyle(false)}>+</button>
-
             <button onClick={zoomOut} style={buttonStyle(false)}>
-              缩小（-）
+              缩小
             </button>
             <button onClick={resetZoom} style={buttonStyle(false)}>
-              默认缩放（0）
+              默认
             </button>
             <button onClick={zoomIn} style={buttonStyle(false)}>
-              放大（+）
+              放大
             </button>
-
-            <div
-              style={{
-                background: "#141923",
-                border: "1px solid #283142",
-                borderRadius: 10,
-                padding: "10px 14px",
-                fontWeight: 700,
-              }}
-            >
-              Zoom: {zoom}x
-            </div>
           </div>
 
           <div
