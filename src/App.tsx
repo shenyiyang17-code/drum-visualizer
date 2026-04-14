@@ -714,8 +714,11 @@ export default function App() {
                   fontWeight: 700,
                   lineHeight: 1,
                   height: 42,
+                  width: 20,
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "center",
+                  flex: "0 0 20px",
                 }}
               >
                 →
@@ -746,6 +749,8 @@ export default function App() {
                   border: "1px solid #475569",
                   background: "#111722",
                   padding: "0 12px",
+                  textAlign: "center",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               />
 
@@ -793,13 +798,13 @@ export default function App() {
                   height: 42,
                   padding: "0 14px",
                   fontWeight: 800,
+                  textAlign: "center",
+                  fontVariantNumeric: "tabular-nums",
                   minWidth: 82,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   boxSizing: "border-box",
-                  textAlign: "center",
-                  fontVariantNumeric: "tabular-nums",
                   letterSpacing: 0.2,
                 }}
               >
