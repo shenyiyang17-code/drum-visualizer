@@ -77,6 +77,9 @@ export default function ScoreView({
   const pageStartStep = pageStartBar * stepsPerBar;
   const visibleStepCount = stepsPerBar * 5;
   const previewBarStartStep = pageStartStep + stepsPerBar * 4;
+  const currentBeatIndexInBar = Math.floor((currentStep % stepsPerBar) / stepsPerBeat);
+  const currentBeatNumber = currentBeatIndexInBar + 1;
+  const currentBeatStartStep = Math.floor(currentStep / stepsPerBeat) * stepsPerBeat;
   const naturalPageWidth = LEFT_GUTTER + visibleStepCount * baseStepWidth;
   const pageWidth = containerWidth > 0 ? Math.min(containerWidth, naturalPageWidth) : naturalPageWidth;
   const availableGridWidth = Math.max(pageWidth - LEFT_GUTTER, 0);
@@ -86,7 +89,9 @@ export default function ScoreView({
       : baseStepWidth;
   const stepWidth = fittedStepWidth;
   const barWidth = stepsPerBar * stepWidth;
+  const beatWidth = stepsPerBeat * stepWidth;
   const visibleWidth = barWidth * 5;
+  const currentBeatLeft = (currentBeatStartStep - pageStartStep) * stepWidth;
 
   return (
     <div
@@ -176,6 +181,68 @@ export default function ScoreView({
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          <div
+            style={{
+              position: "absolute",
+              top: BAR_LABEL_HEIGHT,
+              left: 0,
+              width: "100%",
+              height: HEADER_HEIGHT,
+              display: "flex",
+              borderBottom: "1px solid #1f2937",
+            }}
+          >
+            <div
+              style={{
+                width: LEFT_GUTTER,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#101722",
+                color: "#94a3b8",
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: 0.6,
+              }}
+            >
+              BEAT
+            </div>
+            <div
+              style={{
+                position: "relative",
+                width: visibleWidth,
+                height: "100%",
+                background: "#0f141c",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: currentBeatLeft,
+                  top: 6,
+                  width: beatWidth,
+                  height: HEADER_HEIGHT - 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 10,
+                  background:
+                    currentBeatNumber === 1 ? "rgba(248, 250, 252, 0.16)" : "rgba(148, 163, 184, 0.12)",
+                  border:
+                    currentBeatNumber === 1
+                      ? "1px solid rgba(248, 250, 252, 0.4)"
+                      : "1px solid rgba(148, 163, 184, 0.28)",
+                  color: currentBeatNumber === 1 ? "#f8fafc" : "#cbd5e1",
+                  fontSize: currentBeatNumber === 1 ? 18 : 16,
+                  fontWeight: currentBeatNumber === 1 ? 800 : 700,
+                  boxSizing: "border-box",
+                }}
+              >
+                {currentBeatNumber}
+              </div>
             </div>
           </div>
 

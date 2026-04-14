@@ -138,6 +138,7 @@ export default function App() {
 
   const snapEnabled = true;
   const [metronomeEnabled, setMetronomeEnabled] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
   const [stepWidth, setStepWidth] = useState(28);
   const [zoom, setZoom] = useState(1);
@@ -202,9 +203,23 @@ export default function App() {
     setZoom((v) => Math.max(0.5, parseFloat((v - 0.1).toFixed(2))));
   }, []);
 
+  const updatePlaybackSpeed = useCallback((nextSpeed: number) => {
+    setPlaybackSpeed(parseFloat(clamp(nextSpeed, 0.5, 2.0).toFixed(1)));
+  }, []);
+
+  const decreasePlaybackSpeed = useCallback(() => {
+    setPlaybackSpeed((v) => parseFloat(clamp(v - 0.1, 0.5, 2.0).toFixed(1)));
+  }, []);
+
+  const increasePlaybackSpeed = useCallback(() => {
+    setPlaybackSpeed((v) => parseFloat(clamp(v + 0.1, 0.5, 2.0).toFixed(1)));
+  }, []);
+
   const play = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    audio.playbackRate = playbackSpeed;
 
     console.log("play() called -- attempting audio.play()", { src: audio.src });
     try {
@@ -214,7 +229,7 @@ export default function App() {
     } catch (err) {
       console.error("audio play failed:", err);
     }
-  }, []);
+  }, [playbackSpeed]);
 
   const pause = useCallback(() => {
     const audio = audioRef.current;
@@ -348,16 +363,27 @@ export default function App() {
     return () => audio.removeEventListener("ended", onEnded);
   }, []);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.defaultPlaybackRate = playbackSpeed;
+    audio.playbackRate = playbackSpeed;
+  }, [playbackSpeed]);
+
   // Audio lifecycle logging and error handling
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
     const onLoadedMetadata = () => {
+      audio.defaultPlaybackRate = playbackSpeed;
+      audio.playbackRate = playbackSpeed;
       console.log("audio loadedmetadata", { duration: audio.duration, src: audio.src });
     };
 
     const onCanPlay = () => {
+      audio.defaultPlaybackRate = playbackSpeed;
+      audio.playbackRate = playbackSpeed;
       console.log("audio canplay", { src: audio.src });
     };
 
@@ -374,7 +400,7 @@ export default function App() {
       audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("error", onError);
     };
-  }, []);
+  }, [playbackSpeed]);
 
   const ensureAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
@@ -632,6 +658,28 @@ export default function App() {
             </button>
             <button onClick={zoomIn} style={buttonStyle(false)}>
               放大
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <button onClick={decreasePlaybackSpeed} style={buttonStyle(false)}>
+              减速 (-0.1)
+            </button>
+            <div
+              style={{
+                background: "#141923",
+                border: "1px solid #283142",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontWeight: 700,
+                minWidth: 76,
+                textAlign: "center",
+              }}
+            >
+              {playbackSpeed.toFixed(1)}x
+            </div>
+            <button onClick={increasePlaybackSpeed} style={buttonStyle(false)}>
+              加速 (+0.1)
             </button>
           </div>
 
