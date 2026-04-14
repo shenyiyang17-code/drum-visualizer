@@ -320,12 +320,6 @@ export default function App() {
   const currentStep = Math.round(currentTime / stepDuration);
   const currentBar = Math.floor(currentStep / barSteps);
   const maxLoopInputValue = totalSteps * stepDuration;
-  const loopModeHint =
-    mode === "setLoopStart"
-      ? "点击谱面设置开始点"
-      : mode === "setLoopEnd"
-        ? "点击谱面设置结束点"
-        : null;
   const loopRangeSummary =
     loopStart !== null && loopEnd !== null
       ? `循环：${loopStart.toFixed(1)} → ${loopEnd.toFixed(1)}`
@@ -667,22 +661,6 @@ export default function App() {
               borderRadius: 12,
             }}
           >
-            {loopModeHint ? (
-              <div
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  minHeight: 22,
-                  color: "#93c5fd",
-                  fontSize: 13,
-                  fontWeight: 700,
-                }}
-              >
-                {loopModeHint}
-              </div>
-            ) : null}
-
             <div
               style={{
                 width: "100%",
