@@ -189,31 +189,34 @@ export default function ScoreView({
                     height: 10,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-evenly",
+                    justifyContent: "flex-start",
+                    paddingLeft: 12,
+                    gap: 10,
                     pointerEvents: "none",
                     zIndex: 2,
+                    boxSizing: "border-box",
                   }}
                 >
                   {Array.from({ length: beatsPerBar }).map((_, beatIndex) => {
                     const beatNumber = beatIndex + 1;
-                    const isActiveBeat = beatNumber === countInBeat;
+                    const visibleDotCount = beatsPerBar - countInBeat + 1;
+                    const isVisibleBeat = beatNumber <= visibleDotCount;
 
                     return (
                       <span
                         key={`count-in-${beatNumber}`}
                         style={{
-                          minWidth: 12,
-                          textAlign: "center",
-                          fontSize: 10,
-                          lineHeight: 1,
-                          color: isActiveBeat ? "#f8fafc" : "rgba(203, 213, 225, 0.55)",
-                          fontWeight: isActiveBeat ? 800 : 600,
-                          transform: isActiveBeat ? "scale(1.08)" : "scale(1)",
-                          transition: "color 120ms ease, transform 120ms ease",
+                          display: "inline-block",
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: "rgba(248, 250, 252, 0.88)",
+                          boxShadow: "0 0 0 1px rgba(248, 250, 252, 0.14)",
+                          opacity: isVisibleBeat ? 1 : 0,
+                          transform: "scale(1)",
+                          transition: "opacity 120ms ease",
                         }}
-                      >
-                        {beatNumber}
-                      </span>
+                      />
                     );
                   })}
                 </div>
