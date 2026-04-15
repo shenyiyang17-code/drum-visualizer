@@ -228,9 +228,13 @@ export default function App() {
   const isScrubbingRef = useRef(false);
   const resumePlaybackAfterScrubRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const countInIntervalRef = useRef<number | null>(null);
+  const countInStartTimeoutRef = useRef<number | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [countInActive, setCountInActive] = useState(false);
+  const [countInBeat, setCountInBeat] = useState(1);
   const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null);
   const [importedAudioUrl, setImportedAudioUrl] = useState<string | null>(null);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
@@ -239,18 +243,20 @@ export default function App() {
 
   const [loopStart, setLoopStart] = useState<number | null>(null);
   const [loopEnd, setLoopEnd] = useState<number | null>(null);
+  const [loopEnabled, setLoopEnabled] = useState(false);
 
   const snapEnabled = true;
   const [metronomeEnabled, setMetronomeEnabled] = useState(false);
+  const [metronomeVolume, setMetronomeVolume] = useState(0.9);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
-  const [stepWidth, setStepWidth] = useState(28);
-  const [zoom, setZoom] = useState(1);
-
   const audioContextRef = useRef<AudioContext | null>(null);
+  const metronomeGainRef = useRef<GainNode | null>(null);
+  const lastMetroAudioTimeRef = useRef<number>(0);
   const lastMetroBeatRef = useRef<number>(-1);
 
-  const hasLoop = loopStart !== null && loopEnd !== null && loopEnd > loopStart;
+  const hasLoopRange = loopStart !== null && loopEnd !== null && loopEnd > loopStart;
+  const hasLoop = loopEnabled && hasLoopRange;
   const audioTitle = selectedAudioFile?.name ?? `${PRACTICE_CONTENT.title} · ${currentTrackType.label}`;
   const audioSrc = importedAudioUrl ?? encodeURI(currentTrackType.audioSrc);
   const displayedDuration = audioDuration ?? duration;
@@ -258,8 +264,6 @@ export default function App() {
   const scoreSyncTime = clamp(currentTime - secondsPerBar, 0, duration);
   const scoreSyncStep = clamp(Math.round(scoreSyncTime / stepDuration), 0, totalSteps - 1);
   const scoreSyncBar = Math.floor(scoreSyncStep / barSteps);
-  const countInActive = isPlaying && currentTime >= 0 && currentTime < secondsPerBar;
-  const countInBeat = clamp(Math.floor(currentTime / secondsPerBeat) + 1, 1, beatsPerBar);
   const playbackProgress = playbackDuration > 0 ? clamp(currentTime / playbackDuration, 0, 1) : 0;
   const scrubBarMarkers = useMemo(
     () => Array.from({ length: Math.max(bars, 1) }, (_, barIndex) => barIndex),
@@ -267,6 +271,10 @@ export default function App() {
   );
   const formattedCurrentTime = formatClockTime(currentTime);
   const formattedDisplayedDuration = formatClockTime(displayedDuration);
+  const metronomeDotActive = metronomeEnabled && isPlaying && !countInActive;
+  const metronomeDotBeat = metronomeDotActive
+    ? ((Math.floor(currentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
+    : 1;
 
   const snapTime = useCallback(
     (t: number) => {
@@ -329,26 +337,6 @@ export default function App() {
     [getCalibratedBarTime, secondsPerBar, seekTo]
   );
 
-  const zoomIn = useCallback(() => {
-    setStepWidth((v) => clamp(v + 4, 12, 64));
-  }, []);
-
-  const zoomOut = useCallback(() => {
-    setStepWidth((v) => clamp(v - 4, 12, 64));
-  }, []);
-
-  const resetZoom = useCallback(() => {
-    setStepWidth(28);
-  }, []);
-
-  const increaseZoom = useCallback(() => {
-    setZoom((v) => Math.min(3, parseFloat((v + 0.1).toFixed(2))));
-  }, []);
-
-  const decreaseZoom = useCallback(() => {
-    setZoom((v) => Math.max(0.5, parseFloat((v - 0.1).toFixed(2))));
-  }, []);
-
   const updatePlaybackSpeed = useCallback((nextSpeed: number) => {
     setPlaybackSpeed(parseFloat(clamp(nextSpeed, 0.5, 2.0).toFixed(1)));
   }, []);
@@ -361,11 +349,99 @@ export default function App() {
     setPlaybackSpeed((v) => parseFloat(clamp(v + 0.1, 0.5, 2.0).toFixed(1)));
   }, []);
 
+  const clearCountInTimers = useCallback(() => {
+    if (countInIntervalRef.current !== null) {
+      window.clearInterval(countInIntervalRef.current);
+      countInIntervalRef.current = null;
+    }
+
+    if (countInStartTimeoutRef.current !== null) {
+      window.clearTimeout(countInStartTimeoutRef.current);
+      countInStartTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resetMetronomeTracking = useCallback(() => {
+    lastMetroBeatRef.current = -1;
+    lastMetroAudioTimeRef.current = 0;
+  }, []);
+
   const play = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
 
+    let audioContext = audioContextRef.current;
+    if (!audioContext) {
+      audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+    }
+
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
     audio.playbackRate = playbackSpeed;
+
+    const shouldRunCountIn = audio.currentTime <= 0.001;
+
+    if (shouldRunCountIn) {
+      const triggerCountInClick = () => {
+        if (audioContext.state !== "running") return;
+
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const filter = audioContext.createBiquadFilter();
+
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(1760, audioContext.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1320, audioContext.currentTime + 0.03);
+
+        filter.type = "highpass";
+        filter.frequency.setValueAtTime(900, audioContext.currentTime);
+
+        gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.22, audioContext.currentTime + 0.002);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.04);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioContext.destination);
+
+        osc.start(audioContext.currentTime);
+        osc.stop(audioContext.currentTime + 0.05);
+      };
+
+      clearCountInTimers();
+      setCountInActive(true);
+
+      let beat = 1;
+      setCountInBeat(beat);
+      triggerCountInClick();
+
+      countInIntervalRef.current = window.setInterval(() => {
+        beat += 1;
+        if (beat > beatsPerBar) return;
+        setCountInBeat(beat);
+        triggerCountInClick();
+      }, secondsPerBeat * 1000);
+
+      countInStartTimeoutRef.current = window.setTimeout(async () => {
+        clearCountInTimers();
+        setCountInActive(false);
+        setCountInBeat(1);
+
+        console.log("play() called -- attempting audio.play()", { src: audio.src });
+        try {
+          await audio.play();
+          console.log("play() succeeded");
+          setIsPlaying(true);
+        } catch (err) {
+          console.error("audio play failed:", err);
+        }
+      }, secondsPerBar * 1000);
+
+      return;
+    }
 
     console.log("play() called -- attempting audio.play()", { src: audio.src });
     try {
@@ -375,21 +451,25 @@ export default function App() {
     } catch (err) {
       console.error("audio play failed:", err);
     }
-  }, [playbackSpeed]);
+  }, [beatsPerBar, clearCountInTimers, playbackSpeed, secondsPerBar, secondsPerBeat]);
 
   const pause = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    clearCountInTimers();
+    resetMetronomeTracking();
+    setCountInActive(false);
+    setCountInBeat(1);
     console.log("pause() called");
     audio.pause();
     console.log("pause() executed");
     setIsPlaying(false);
-  }, []);
+  }, [clearCountInTimers, resetMetronomeTracking]);
 
   const togglePlay = useCallback(() => {
-    if (isPlaying) pause();
+    if (isPlaying || countInActive) pause();
     else play();
-  }, [isPlaying, pause, play]);
+  }, [countInActive, isPlaying, pause, play]);
 
   const resetPlaybackState = useCallback(() => {
     const audio = audioRef.current;
@@ -399,6 +479,9 @@ export default function App() {
       audio.currentTime = 0;
     }
 
+    clearCountInTimers();
+    resetMetronomeTracking();
+
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -407,12 +490,20 @@ export default function App() {
     resumePlaybackAfterScrubRef.current = false;
     isScrubbingRef.current = false;
     setIsPlaying(false);
+    setCountInActive(false);
+    setCountInBeat(1);
     setCurrentTime(0);
     setLoopStart(null);
     setLoopEnd(null);
+    setLoopEnabled(false);
     setMode(null);
     setAudioDuration(null);
-  }, []);
+  }, [clearCountInTimers, resetMetronomeTracking]);
+
+  const handleReturnToStart = useCallback(() => {
+    pause();
+    seekTo(0);
+  }, [pause, seekTo]);
 
   const openAudioPicker = useCallback(() => {
     audioInputRef.current?.click();
@@ -537,11 +628,19 @@ export default function App() {
     setMode(null);
     setLoopStart(null);
     setLoopEnd(null);
+    setLoopEnabled(false);
   }, []);
+
+  const applyLoop = useCallback(() => {
+    if (!hasLoopRange) return;
+    setMode(null);
+    setLoopEnabled(true);
+  }, [hasLoopRange]);
 
   const setLoopStartAt = useCallback(
     (t: number) => {
       const v = snapTime(t);
+      setLoopEnabled(false);
 
       setLoopStart(() => {
         const nextStart = v;
@@ -563,6 +662,7 @@ export default function App() {
   const setLoopEndAt = useCallback(
     (t: number) => {
       const v = snapTime(t);
+      setLoopEnabled(false);
 
       setLoopEnd(() => {
         const nextEnd = v;
@@ -622,10 +722,12 @@ export default function App() {
 
     const audioTime = audio.currentTime;
 
-    if (hasLoop && loopStart !== null && loopEnd !== null && audioTime >= loopEnd) {
-      audio.currentTime = loopStart;
-      syncPlaybackPosition(loopStart);
-      return;
+    if (hasLoop && loopStart !== null && loopEnd !== null) {
+      if (audioTime < loopStart || audioTime >= loopEnd) {
+        audio.currentTime = loopStart;
+        syncPlaybackPosition(loopStart);
+        return;
+      }
     }
 
     syncPlaybackPosition(audioTime);
@@ -665,6 +767,8 @@ export default function App() {
 
     const onEnded = () => {
       audio.pause();
+      clearCountInTimers();
+      resetMetronomeTracking();
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -673,6 +777,8 @@ export default function App() {
       isScrubbingRef.current = false;
       syncPlaybackPosition(audio.duration || audio.currentTime || playbackDuration);
       setIsPlaying(false);
+      setCountInActive(false);
+      setCountInBeat(1);
     };
 
     audio.addEventListener("timeupdate", syncOnAudioEvent);
@@ -685,7 +791,7 @@ export default function App() {
       audio.removeEventListener("seeked", syncOnAudioEvent);
       audio.removeEventListener("ended", onEnded);
     };
-  }, [playbackDuration, syncFromAudio, syncPlaybackPosition]);
+  }, [clearCountInTimers, playbackDuration, resetMetronomeTracking, syncFromAudio, syncPlaybackPosition]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -738,43 +844,73 @@ export default function App() {
     return audioContextRef.current;
   }, []);
 
+  const ensureMetronomeGain = useCallback((ctx: AudioContext) => {
+    if (!metronomeGainRef.current) {
+      const gain = ctx.createGain();
+      gain.gain.value = metronomeVolume;
+      gain.connect(ctx.destination);
+      metronomeGainRef.current = gain;
+    }
+    return metronomeGainRef.current;
+  }, [metronomeVolume]);
+
+  useEffect(() => {
+    const ctx = audioContextRef.current;
+    const gain = metronomeGainRef.current;
+    if (!ctx || !gain) return;
+
+    gain.gain.setTargetAtTime(metronomeVolume, ctx.currentTime, 0.01);
+  }, [metronomeVolume]);
+
   const beep = useCallback(
     (accent: boolean) => {
       const ctx = ensureAudioContext();
 
+      if (ctx.state !== "running") return;
+
+      const metroGain = ensureMetronomeGain(ctx);
+
       const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
+      const clickGain = ctx.createGain();
 
       osc.type = "square";
       osc.frequency.value = accent ? 1200 : 800;
 
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.005);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
+      clickGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      clickGain.gain.exponentialRampToValueAtTime(accent ? 0.34 : 0.24, ctx.currentTime + 0.004);
+      clickGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+      osc.connect(clickGain);
+      clickGain.connect(metroGain);
 
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.07);
     },
-    [ensureAudioContext]
+    [ensureAudioContext, ensureMetronomeGain]
   );
 
   useEffect(() => {
-    if (!metronomeEnabled || !isPlaying) {
+    if (!metronomeEnabled || !isPlaying || countInActive) {
       lastMetroBeatRef.current = -1;
+      lastMetroAudioTimeRef.current = 0;
       return;
     }
 
-    const beatIndex = Math.floor(currentTime / secondsPerBeat);
+    const audioTime = audioRef.current?.currentTime ?? currentTime;
+    if (audioTime + 0.001 < lastMetroAudioTimeRef.current) {
+      // Seek or loop wrap moved backward; re-arm beat edge detection.
+      lastMetroBeatRef.current = -1;
+    }
+    lastMetroAudioTimeRef.current = audioTime;
+
+    const beatIndex = Math.floor(audioTime / secondsPerBeat);
 
     if (beatIndex !== lastMetroBeatRef.current) {
       lastMetroBeatRef.current = beatIndex;
       const accent = beatIndex % beatsPerBar === 0;
       beep(accent);
     }
-  }, [beep, beatsPerBar, currentTime, isPlaying, metronomeEnabled, secondsPerBeat]);
+  }, [beep, beatsPerBar, countInActive, currentTime, isPlaying, metronomeEnabled, secondsPerBeat]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -825,24 +961,6 @@ export default function App() {
         return;
       }
 
-      if (e.key === "-" || e.key === "_") {
-        e.preventDefault();
-        zoomOut();
-        return;
-      }
-
-      if (e.key === "=" || e.key === "+") {
-        e.preventDefault();
-        zoomIn();
-        return;
-      }
-
-      if (e.key === "0") {
-        e.preventDefault();
-        resetZoom();
-        return;
-      }
-
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         const delta = e.shiftKey ? secondsPerBeat * beatsPerBar : secondsPerBeat;
@@ -864,7 +982,6 @@ export default function App() {
     currentTime,
     hasLoop,
     loopStart,
-    resetZoom,
     seekTo,
     seekToSnapped,
     secondsPerBeat,
@@ -872,25 +989,7 @@ export default function App() {
     setLoopEndAt,
     setLoopStartAt,
     togglePlay,
-    zoomIn,
-    zoomOut,
   ]);
-
-  useEffect(() => {
-    const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-
-      if (e.deltaY < 0) {
-        setZoom((v) => Math.min(3, parseFloat((v + 0.1).toFixed(2))));
-      } else if (e.deltaY > 0) {
-        setZoom((v) => Math.max(0.5, parseFloat((v - 0.1).toFixed(2))));
-      }
-    };
-
-    window.addEventListener("wheel", onWheel, { passive: false });
-    return () => window.removeEventListener("wheel", onWheel as EventListener);
-  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -903,9 +1002,10 @@ export default function App() {
 
   useEffect(() => {
     return () => {
+      clearCountInTimers();
       if (importedAudioUrl) URL.revokeObjectURL(importedAudioUrl);
     };
-  }, [importedAudioUrl]);
+  }, [clearCountInTimers, importedAudioUrl]);
 
   return (
     <div
@@ -1163,7 +1263,7 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => seekTo(hasLoop && loopStart !== null ? loopStart : 0)}
+                onClick={handleReturnToStart}
                 style={buttonStyle(false)}
               >
                 回到起点
@@ -1171,23 +1271,36 @@ export default function App() {
 
               <button
                 onClick={() => setMetronomeEnabled((v) => !v)}
-                style={buttonStyle(metronomeEnabled)}
+                style={buttonStyle(metronomeEnabled, "metronome")}
               >
                 节拍器
               </button>
+
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: "#94a3b8",
+                  fontSize: 12,
+                }}
+              >
+                <span>音量</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={metronomeVolume}
+                  onChange={(e) => setMetronomeVolume(Number(e.target.value))}
+                  style={{ width: 110 }}
+                />
+                <span style={{ minWidth: 30, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {Math.round(metronomeVolume * 100)}%
+                </span>
+              </div>
             </div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-              <button onClick={zoomOut} style={buttonStyle(false)}>
-                缩小
-              </button>
-              <button onClick={resetZoom} style={buttonStyle(false)}>
-                默认
-              </button>
-              <button onClick={zoomIn} style={buttonStyle(false)}>
-                放大
-              </button>
-            </div>
           </div>
 
           <div
@@ -1232,6 +1345,7 @@ export default function App() {
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "") {
+                    setLoopEnabled(false);
                     setLoopStart(null);
                     return;
                   }
@@ -1277,6 +1391,7 @@ export default function App() {
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "") {
+                    setLoopEnabled(false);
                     setLoopEnd(null);
                     return;
                   }
@@ -1305,6 +1420,18 @@ export default function App() {
               </button>
 
               <button
+                onClick={applyLoop}
+                disabled={!hasLoopRange}
+                style={{
+                  ...buttonStyle(hasLoop),
+                  opacity: hasLoopRange ? 1 : 0.45,
+                  cursor: hasLoopRange ? "pointer" : "not-allowed",
+                }}
+              >
+                应用循环
+              </button>
+
+              <button
                 onClick={clearLoop}
                 style={{
                   ...buttonStyle(false),
@@ -1314,7 +1441,7 @@ export default function App() {
                   fontWeight: 500,
                 }}
               >
-                清除循环（Delete）
+                清除循环
               </button>
             </div>
 
@@ -1431,11 +1558,11 @@ export default function App() {
           onSeek={seekToBarTime}
           countInActive={countInActive}
           countInBeat={countInBeat}
+          metronomeActive={metronomeDotActive}
+          metronomeBeat={metronomeDotBeat}
           onSetLoopStart={setLoopStartAt}
           onSetLoopEnd={setLoopEndAt}
           snapTime={snapTime}
-          stepWidth={stepWidth}
-          zoom={zoom}
           onMiniMapSeek={seekToSnapped}
         />
       </div>
@@ -1459,11 +1586,13 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function buttonStyle(active: boolean): React.CSSProperties {
+function buttonStyle(active: boolean, tone: "default" | "metronome" = "default"): React.CSSProperties {
+  const isMetronome = tone === "metronome";
+
   return {
-    background: active ? "#3b82f6" : "#202735",
+    background: active ? (isMetronome ? "#14b8a6" : "#3b82f6") : "#202735",
     color: active ? "#f8fafc" : "#fff",
-    border: "1px solid " + (active ? "#60a5fa" : "#344155"),
+    border: "1px solid " + (active ? (isMetronome ? "#5eead4" : "#60a5fa") : "#344155"),
     borderRadius: 10,
     minHeight: 42,
     padding: "0 14px",
@@ -1473,6 +1602,7 @@ function buttonStyle(active: boolean): React.CSSProperties {
     alignItems: "center",
     justifyContent: "center",
     boxSizing: "border-box",
+    boxShadow: active && isMetronome ? "0 0 0 1px rgba(94, 234, 212, 0.24), 0 8px 18px rgba(20, 184, 166, 0.22)" : "none",
   };
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 type TrackName = "HH" | "SD" | "BD";
 
@@ -17,11 +17,11 @@ type Props = {
   onSeek?: (time: number) => void;
   countInActive?: boolean;
   countInBeat?: number;
+  metronomeActive?: boolean;
+  metronomeBeat?: number;
   onSetLoopStart?: (time: number) => void;
   onSetLoopEnd?: (time: number) => void;
   snapTime?: (time: number) => number;
-  stepWidth?: number;
-  zoom?: number;
   onMiniMapSeek?: (time: number) => void;
 };
 
@@ -50,6 +50,8 @@ export default function ScoreView({
   onSeek,
   countInActive = false,
   countInBeat = 1,
+  metronomeActive = false,
+  metronomeBeat = 1,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -83,9 +85,7 @@ export default function ScoreView({
   const stepDuration = secondsPerBeat / stepsPerBeat;
   const stepsPerBar = beatsPerBar * stepsPerBeat;
 
-  // Zoom factor for horizontal scaling (default 1)
-  const zoom = 1;
-  const baseStepWidth = STEP_WIDTH * zoom;
+  const baseStepWidth = STEP_WIDTH;
 
   // Paged view: 5 bars at a time, advancing by 4 bars
   const currentBar = Math.floor(currentStep / stepsPerBar);
@@ -104,6 +104,8 @@ export default function ScoreView({
   const stepWidth = fittedStepWidth;
   const barWidth = stepsPerBar * stepWidth;
   const visibleWidth = barWidth * VISIBLE_BAR_COUNT;
+  const scoreContentOpacity = countInActive ? 0.72 : 1;
+  const scoreAreaHeight = BAR_LABEL_HEIGHT + HEADER_HEIGHT + TRACKS.length * ROW_HEIGHT;
 
   useEffect(() => {
     if (pageStartBarOverride === null) return;
@@ -140,7 +142,7 @@ export default function ScoreView({
         <div
           style={{
             width: pageWidth,
-            height: BAR_LABEL_HEIGHT + HEADER_HEIGHT + TRACKS.length * ROW_HEIGHT,
+            height: scoreAreaHeight,
             position: "relative",
           }}
         >
@@ -168,7 +170,7 @@ export default function ScoreView({
                 fontSize: 13,
               }}
             >
-              当前页
+              当前节
             </div>
             <div
               style={{
@@ -179,49 +181,6 @@ export default function ScoreView({
                 overflow: "hidden",
               }}
             >
-              {countInActive ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 3,
-                    width: barWidth,
-                    height: 10,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    paddingLeft: 12,
-                    gap: 10,
-                    pointerEvents: "none",
-                    zIndex: 2,
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {Array.from({ length: beatsPerBar }).map((_, beatIndex) => {
-                    const beatNumber = beatIndex + 1;
-                    const visibleDotCount = beatsPerBar - countInBeat + 1;
-                    const isVisibleBeat = beatNumber <= visibleDotCount;
-
-                    return (
-                      <span
-                        key={`count-in-${beatNumber}`}
-                        style={{
-                          display: "inline-block",
-                          width: 14,
-                          height: 14,
-                          borderRadius: "50%",
-                          background: "rgba(248, 250, 252, 0.88)",
-                          boxShadow: "0 0 0 1px rgba(248, 250, 252, 0.14)",
-                          opacity: isVisibleBeat ? 1 : 0,
-                          transform: "scale(1)",
-                          transition: "opacity 120ms ease",
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              ) : null}
-
               {Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barIndex) => {
                 const isPreviewBar = barIndex === 4;
                 const isActivePageBar = barIndex < PRACTICE_BAR_COUNT;
@@ -314,7 +273,59 @@ export default function ScoreView({
                 height: "100%",
                 background: "#0f141c",
               }}
-            />
+            >
+              {countInActive || metronomeActive ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 12,
+                    top: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-start",
+                    gap: 10,
+                    pointerEvents: "none",
+                    transform: "translateY(-50%)",
+                  }}
+                >
+                  {Array.from({ length: beatsPerBar }).map((_, beatIndex) => {
+                    const beatNumber = beatIndex + 1;
+                    const visibleDotCount = beatsPerBar - countInBeat + 1;
+                    const isCountInVisibleBeat = beatNumber <= visibleDotCount;
+                    const isMetronomeCurrentBeat = metronomeBeat === beatNumber;
+                    const isVisibleBeat = countInActive ? isCountInVisibleBeat : true;
+                    const dotBackground = countInActive
+                      ? "rgba(248, 250, 252, 0.88)"
+                      : isMetronomeCurrentBeat
+                        ? "#2dd4bf"
+                        : "rgba(148, 163, 184, 0.34)";
+                    const dotBoxShadow = countInActive
+                      ? "0 0 0 1px rgba(248, 250, 252, 0.14)"
+                      : isMetronomeCurrentBeat
+                        ? "0 0 0 1px rgba(94, 234, 212, 0.3), 0 0 14px rgba(45, 212, 191, 0.32)"
+                        : "0 0 0 1px rgba(148, 163, 184, 0.12)";
+
+                    return (
+                      <span
+                        key={`beat-dot-${beatNumber}`}
+                        style={{
+                          display: "inline-block",
+                          width: 14,
+                          height: 14,
+                          borderRadius: "50%",
+                          background: dotBackground,
+                          boxShadow: dotBoxShadow,
+                          opacity: isVisibleBeat ? 1 : countInActive ? 0 : 0.42,
+                          transform:
+                            !countInActive && isMetronomeCurrentBeat ? "scale(1.05)" : "scale(1)",
+                          transition: "opacity 120ms ease, transform 120ms ease, background 120ms ease",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {/* Rows */}
@@ -354,6 +365,8 @@ export default function ScoreView({
                     position: "relative",
                     width: visibleWidth,
                     height: "100%",
+                    opacity: scoreContentOpacity,
+                    transition: "opacity 140ms ease-out",
                   }}
                 >
                   {/* Preview bar background (5th bar greyed out) */}
