@@ -230,7 +230,6 @@ export default function App() {
   const rafRef = useRef<number | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
-  const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null);
   const [importedAudioUrl, setImportedAudioUrl] = useState<string | null>(null);
@@ -256,6 +255,9 @@ export default function App() {
   const audioSrc = importedAudioUrl ?? encodeURI(currentTrackType.audioSrc);
   const displayedDuration = audioDuration ?? duration;
   const playbackDuration = audioDuration ?? duration;
+  const scoreSyncTime = clamp(currentTime - secondsPerBar, 0, duration);
+  const scoreSyncStep = clamp(Math.round(scoreSyncTime / stepDuration), 0, totalSteps - 1);
+  const scoreSyncBar = Math.floor(scoreSyncStep / barSteps);
   const countInActive = isPlaying && currentTime >= 0 && currentTime < secondsPerBar;
   const countInBeat = clamp(Math.floor(currentTime / secondsPerBeat) + 1, 1, beatsPerBar);
   const playbackProgress = playbackDuration > 0 ? clamp(currentTime / playbackDuration, 0, 1) : 0;
@@ -282,9 +284,8 @@ export default function App() {
       const next = clamp(t, 0, playbackDuration);
       audio.currentTime = next;
       setCurrentTime(next);
-      setCurrentStep(clamp(Math.round(next / stepDuration), 0, totalSteps - 1));
     },
-    [playbackDuration, stepDuration, totalSteps]
+    [playbackDuration]
   );
 
   const seekToSnapped = useCallback(
@@ -407,7 +408,6 @@ export default function App() {
     isScrubbingRef.current = false;
     setIsPlaying(false);
     setCurrentTime(0);
-    setCurrentStep(0);
     setLoopStart(null);
     setLoopEnd(null);
     setMode(null);
@@ -605,17 +605,15 @@ export default function App() {
     [mode, seekTo, setLoopEndAt, setLoopStartAt, snapTime]
   );
 
-  const currentBar = Math.floor(currentStep / barSteps);
+  const currentBar = scoreSyncBar;
   const maxLoopInputValue = totalSteps * stepDuration;
 
   const syncPlaybackPosition = useCallback(
     (nextTime: number) => {
       const clampedTime = clamp(nextTime, 0, playbackDuration);
-      const nextStep = clamp(Math.round(clampedTime / stepDuration), 0, totalSteps - 1);
       setCurrentTime(clampedTime);
-      setCurrentStep(nextStep);
     },
-    [playbackDuration, stepDuration, totalSteps]
+    [playbackDuration]
   );
 
   const syncFromAudio = useCallback(() => {
@@ -1370,7 +1368,7 @@ export default function App() {
           >
             <InfoCard label="BPM" value={String(bpm)} />
             <InfoCard label="当前时间" value={`${currentTime.toFixed(3)}s`} />
-            <InfoCard label="当前 Step" value={`${currentStep} / ${totalSteps - 1}`} />
+            <InfoCard label="当前 Step" value={`${scoreSyncStep} / ${totalSteps - 1}`} />
             <InfoCard label="当前小节" value={`${currentBar + 1} / ${bars}`} />
             <InfoCard label="总时长" value={`${displayedDuration.toFixed(1)}s`} />
           </div>
@@ -1423,8 +1421,8 @@ export default function App() {
           bpm={bpm}
           beatsPerBar={beatsPerBar}
           stepsPerBeat={stepsPerBeat}
-          currentTime={currentTime}
-          currentStep={currentStep}
+          currentTime={scoreSyncTime}
+          currentStep={scoreSyncStep}
           loopStart={loopStart}
           loopEnd={loopEnd}
           hasLoop={hasLoop}
