@@ -198,6 +198,10 @@ export default function App() {
   const displayedDuration = audioDuration ?? duration;
   const playbackDuration = audioDuration ?? duration;
   const playbackProgress = playbackDuration > 0 ? clamp(currentTime / playbackDuration, 0, 1) : 0;
+  const scrubBarMarkers = useMemo(
+    () => Array.from({ length: Math.max(bars, 1) }, (_, barIndex) => barIndex),
+    [bars]
+  );
   const formattedCurrentTime = formatClockTime(currentTime);
   const formattedDisplayedDuration = formatClockTime(displayedDuration);
 
@@ -946,6 +950,60 @@ export default function App() {
                   borderRadius: 999,
                 }}
               />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                }}
+              >
+                {scrubBarMarkers.map((barIndex) => {
+                  const leftPercent = bars > 0 ? (barIndex / bars) * 100 : 0;
+                  const isEdge = barIndex === 0;
+
+                  return (
+                    <button
+                      key={barIndex}
+                      type="button"
+                      aria-label={`跳转到第 ${barIndex + 1} 小节`}
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        jumpToBar(barIndex);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: `${leftPercent}%`,
+                        width: 12,
+                        padding: 0,
+                        border: "none",
+                        background: "transparent",
+                        transform: isEdge ? "none" : "translateX(-6px)",
+                        cursor: "pointer",
+                        pointerEvents: "auto",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 2,
+                          bottom: 2,
+                          left: "50%",
+                          width: 1,
+                          background: "rgba(226, 232, 240, 0.42)",
+                          transform: "translateX(-50%)",
+                        }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
               <div
                 style={{
                   position: "absolute",
