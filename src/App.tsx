@@ -233,8 +233,11 @@ export default function App() {
   const countInIntervalRef = useRef<number | null>(null);
   const countInStartTimeoutRef = useRef<number | null>(null);
   const pendingSourceSwitchRef = useRef<{ time: number; shouldResume: boolean } | null>(null);
+  const trackSwitchInProgressRef = useRef(false);
 
   const [currentTime, setCurrentTime] = useState(0);
+  const [scrubDragTime, setScrubDragTime] = useState<number | null>(null);
+  const [trackSwitchDisplayTime, setTrackSwitchDisplayTime] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [countInActive, setCountInActive] = useState(false);
   const [countInBeat, setCountInBeat] = useState(1);
@@ -263,19 +266,20 @@ export default function App() {
   const audioSrc = importedAudioUrl ?? encodeURI(currentTrackType.audioSrc);
   const displayedDuration = audioDuration ?? duration;
   const playbackDuration = audioDuration ?? duration;
-  const scoreSyncTime = clamp(currentTime - secondsPerBar, 0, duration);
+  const visualCurrentTime = scrubDragTime ?? trackSwitchDisplayTime ?? currentTime;
+  const scoreSyncTime = clamp(visualCurrentTime - secondsPerBar, 0, duration);
   const scoreSyncStep = clamp(Math.round(scoreSyncTime / stepDuration), 0, totalSteps - 1);
   const scoreSyncBar = Math.floor(scoreSyncStep / barSteps);
-  const playbackProgress = playbackDuration > 0 ? clamp(currentTime / playbackDuration, 0, 1) : 0;
+  const playbackProgress = playbackDuration > 0 ? clamp(visualCurrentTime / playbackDuration, 0, 1) : 0;
   const scrubBarMarkers = useMemo(
     () => Array.from({ length: Math.max(bars, 1) }, (_, barIndex) => barIndex),
     [bars]
   );
-  const formattedCurrentTime = formatClockTime(currentTime);
+  const formattedCurrentTime = formatClockTime(visualCurrentTime);
   const formattedDisplayedDuration = formatClockTime(displayedDuration);
-  const metronomeDotActive = metronomeEnabled && isPlaying && !countInActive;
+  const metronomeDotActive = metronomeEnabled && isPlaying && !countInActive && !trackSwitchInProgressRef.current;
   const metronomeDotBeat = metronomeDotActive
-    ? ((Math.floor(currentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
+    ? ((Math.floor(visualCurrentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
     : 1;
 
   const snapTime = useCallback(
@@ -292,6 +296,7 @@ export default function App() {
       const audio = audioRef.current;
       if (!audio) return;
       const next = clamp(t, 0, playbackDuration);
+      setTrackSwitchDisplayTime(null);
       audio.currentTime = next;
       setCurrentTime(next);
     },
@@ -535,6 +540,7 @@ export default function App() {
         time: nextTime,
         shouldResume,
       };
+      trackSwitchInProgressRef.current = true;
 
       clearCountInTimers();
       resetMetronomeTracking();
@@ -550,9 +556,10 @@ export default function App() {
 
       resumePlaybackAfterScrubRef.current = false;
       isScrubbingRef.current = false;
-      setIsPlaying(false);
+      setIsPlaying(shouldResume);
       setCountInActive(false);
       setCountInBeat(1);
+      setTrackSwitchDisplayTime(nextTime);
       setCurrentTime(nextTime);
 
       setSelectedAudioFile(null);
@@ -565,26 +572,25 @@ export default function App() {
     [clearCountInTimers, currentTime, playbackDuration, resetMetronomeTracking, selectedTrackType]
   );
 
-  const seekFromScrubRatio = useCallback(
-    (ratio: number) => {
-      if (playbackDuration <= 0) return;
-      seekTo(clamp(ratio, 0, 1) * playbackDuration);
-    },
-    [playbackDuration, seekTo]
-  );
-
   const updateScrubFromPointer = useCallback(
     (clientX: number) => {
       const scrubBar = scrubBarRef.current;
       if (!scrubBar || playbackDuration <= 0) return;
+      const audio = audioRef.current;
+      if (!audio) return;
 
       const rect = scrubBar.getBoundingClientRect();
       if (rect.width <= 0) return;
 
-      const ratio = (clientX - rect.left) / rect.width;
-      seekFromScrubRatio(ratio);
+      const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
+      const nextTime = ratio * playbackDuration;
+
+      setTrackSwitchDisplayTime(null);
+      setScrubDragTime(nextTime);
+      audio.currentTime = nextTime;
+      setCurrentTime(nextTime);
     },
-    [playbackDuration, seekFromScrubRatio]
+    [playbackDuration]
   );
 
   const handleScrubPointerDown = useCallback(
@@ -593,16 +599,18 @@ export default function App() {
       event.preventDefault();
       resumePlaybackAfterScrubRef.current = !!audio && !audio.paused;
       isScrubbingRef.current = true;
+      setTrackSwitchDisplayTime(null);
 
       if (audio && !audio.paused) {
         audio.pause();
         setIsPlaying(false);
       }
 
+      setScrubDragTime(audio?.currentTime ?? currentTime);
       event.currentTarget.setPointerCapture(event.pointerId);
       updateScrubFromPointer(event.clientX);
     },
-    [updateScrubFromPointer]
+    [currentTime, updateScrubFromPointer]
   );
 
   const handleScrubPointerMove = useCallback(
@@ -622,6 +630,7 @@ export default function App() {
       }
 
       isScrubbingRef.current = false;
+      setScrubDragTime(null);
 
       if (resumePlaybackAfterScrubRef.current) {
         resumePlaybackAfterScrubRef.current = false;
@@ -630,8 +639,9 @@ export default function App() {
       }
 
       resumePlaybackAfterScrubRef.current = false;
+      setCurrentTime(audioRef.current?.currentTime ?? currentTime);
     },
-    [play, updateScrubFromPointer]
+    [currentTime, play, updateScrubFromPointer]
   );
 
   const handleScrubPointerUp = useCallback(
@@ -744,6 +754,7 @@ export default function App() {
   const syncFromAudio = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (trackSwitchInProgressRef.current || isScrubbingRef.current) return;
 
     const audioTime = audio.currentTime;
 
@@ -787,6 +798,7 @@ export default function App() {
     if (!audio) return;
 
     const syncOnAudioEvent = () => {
+      if (trackSwitchInProgressRef.current || isScrubbingRef.current) return;
       syncFromAudio();
     };
 
@@ -833,7 +845,9 @@ export default function App() {
     const onLoadedMetadata = () => {
       audio.defaultPlaybackRate = playbackSpeed;
       audio.playbackRate = playbackSpeed;
-      syncPlaybackPosition(audio.currentTime);
+      if (!trackSwitchInProgressRef.current) {
+        syncPlaybackPosition(audio.currentTime);
+      }
       if (Number.isFinite(audio.duration)) {
         setAudioDuration(audio.duration);
       }
@@ -843,7 +857,9 @@ export default function App() {
     const onCanPlay = () => {
       audio.defaultPlaybackRate = playbackSpeed;
       audio.playbackRate = playbackSpeed;
-      syncPlaybackPosition(audio.currentTime);
+      if (!trackSwitchInProgressRef.current) {
+        syncPlaybackPosition(audio.currentTime);
+      }
       console.log("audio canplay", { src: audio.src });
     };
 
@@ -1033,6 +1049,8 @@ export default function App() {
 
       audio.currentTime = targetTime;
       syncPlaybackPosition(targetTime);
+      trackSwitchInProgressRef.current = false;
+      setTrackSwitchDisplayTime(null);
 
       if (!pendingSwitch?.shouldResume) {
         setIsPlaying(false);
@@ -1062,6 +1080,8 @@ export default function App() {
       };
     }
 
+    trackSwitchInProgressRef.current = false;
+    setTrackSwitchDisplayTime(null);
     audio.currentTime = 0;
     syncPlaybackPosition(0);
   }, [audioSrc, playbackDuration, syncPlaybackPosition]);
@@ -1213,31 +1233,17 @@ export default function App() {
                   const isEdge = barIndex === 0;
 
                   return (
-                    <button
+                    <span
                       key={barIndex}
-                      type="button"
-                      aria-label={`跳转到第 ${barIndex + 1} 小节`}
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        jumpToBar(barIndex);
-                      }}
+                      aria-hidden="true"
                       style={{
                         position: "absolute",
                         top: 0,
                         bottom: 0,
                         left: `${leftPercent}%`,
                         width: 12,
-                        padding: 0,
-                        border: "none",
-                        background: "transparent",
                         transform: isEdge ? "none" : "translateX(-6px)",
-                        cursor: "pointer",
-                        pointerEvents: "auto",
+                        pointerEvents: "none",
                       }}
                     >
                       <span
@@ -1251,7 +1257,7 @@ export default function App() {
                           transform: "translateX(-50%)",
                         }}
                       />
-                    </button>
+                    </span>
                   );
                 })}
               </div>
