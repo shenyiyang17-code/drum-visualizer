@@ -25,7 +25,7 @@ type DrumDataShape =
       }>;
     };
 
-type TrackTypeId = "original" | "drums" | "guitar";
+type TrackTypeId = "original" | "drums" | "guitar" | "bass";
 
 type TrackTypeConfig = {
   label: string;
@@ -41,7 +41,8 @@ type PracticeContent = {
 const TRACK_TYPE_OPTIONS: Array<{ id: TrackTypeId; label: string }> = [
   { id: "original", label: "原曲" },
   { id: "drums", label: "鼓轨" },
-  { id: "guitar", label: "吉他轨" },
+  { id: "guitar", label: "吉他轨（开发中）" },
+  { id: "bass", label: "贝斯轨（开发中）" },
 ];
 
 const TARGET_TEST_BAR_COUNT = 32;
@@ -55,7 +56,8 @@ const PRACTICE_CONTENT: PracticeContent = {
   trackTypes: {
     original: { label: "原曲", audioSrc: "/audio/billie-jean.wav" },
     drums: { label: "鼓轨", audioSrc: "/audio/billie-jean.wav" },
-    guitar: { label: "吉他轨", audioSrc: "/audio/billie-jean.wav" },
+    guitar: { label: "吉他轨（开发中）", audioSrc: "/audio/billie-jean.wav" },
+    bass: { label: "贝斯轨（开发中）", audioSrc: "/audio/billie-jean.wav" },
   },
 };
 
@@ -230,6 +232,7 @@ export default function App() {
   const rafRef = useRef<number | null>(null);
   const countInIntervalRef = useRef<number | null>(null);
   const countInStartTimeoutRef = useRef<number | null>(null);
+  const pendingSourceSwitchRef = useRef<{ time: number; shouldResume: boolean } | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -245,7 +248,6 @@ export default function App() {
   const [loopEnd, setLoopEnd] = useState<number | null>(null);
   const [loopEnabled, setLoopEnabled] = useState(false);
 
-  const snapEnabled = true;
   const [metronomeEnabled, setMetronomeEnabled] = useState(false);
   const [metronomeVolume, setMetronomeVolume] = useState(0.9);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -336,10 +338,6 @@ export default function App() {
     },
     [getCalibratedBarTime, secondsPerBar, seekTo]
   );
-
-  const updatePlaybackSpeed = useCallback((nextSpeed: number) => {
-    setPlaybackSpeed(parseFloat(clamp(nextSpeed, 0.5, 2.0).toFixed(1)));
-  }, []);
 
   const decreasePlaybackSpeed = useCallback(() => {
     setPlaybackSpeed((v) => parseFloat(clamp(v - 0.1, 0.5, 2.0).toFixed(1)));
@@ -529,7 +527,34 @@ export default function App() {
       const nextTrackType = event.target.value as TrackTypeId;
       if (nextTrackType === selectedTrackType) return;
 
-      resetPlaybackState();
+      const audio = audioRef.current;
+      const nextTime = clamp(audio?.currentTime ?? currentTime, 0, playbackDuration);
+      const shouldResume = !!audio && !audio.paused;
+
+      pendingSourceSwitchRef.current = {
+        time: nextTime,
+        shouldResume,
+      };
+
+      clearCountInTimers();
+      resetMetronomeTracking();
+
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      if (audio) {
+        audio.pause();
+      }
+
+      resumePlaybackAfterScrubRef.current = false;
+      isScrubbingRef.current = false;
+      setIsPlaying(false);
+      setCountInActive(false);
+      setCountInBeat(1);
+      setCurrentTime(nextTime);
+
       setSelectedAudioFile(null);
       setImportedAudioUrl((prevUrl) => {
         if (prevUrl) URL.revokeObjectURL(prevUrl);
@@ -537,7 +562,7 @@ export default function App() {
       });
       setSelectedTrackType(nextTrackType);
     },
-    [resetPlaybackState, selectedTrackType]
+    [clearCountInTimers, currentTime, playbackDuration, resetMetronomeTracking, selectedTrackType]
   );
 
   const seekFromScrubRatio = useCallback(
@@ -995,10 +1020,51 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
 
+    const pendingSwitch = pendingSourceSwitchRef.current;
+
+    const applySourceState = async () => {
+      const targetTime = pendingSwitch
+        ? clamp(
+            pendingSwitch.time,
+            0,
+            Number.isFinite(audio.duration) ? audio.duration : playbackDuration
+          )
+        : 0;
+
+      audio.currentTime = targetTime;
+      syncPlaybackPosition(targetTime);
+
+      if (!pendingSwitch?.shouldResume) {
+        setIsPlaying(false);
+        return;
+      }
+
+      try {
+        await audio.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error("audio play failed after source switch:", err);
+        setIsPlaying(false);
+      }
+    };
+
+    const handleCanPlay = () => {
+      pendingSourceSwitchRef.current = null;
+      void applySourceState();
+    };
+
     audio.load();
+
+    if (pendingSwitch) {
+      audio.addEventListener("canplay", handleCanPlay, { once: true });
+      return () => {
+        audio.removeEventListener("canplay", handleCanPlay);
+      };
+    }
+
     audio.currentTime = 0;
     syncPlaybackPosition(0);
-  }, [audioSrc]);
+  }, [audioSrc, playbackDuration, syncPlaybackPosition]);
 
   useEffect(() => {
     return () => {
@@ -1605,17 +1671,6 @@ function buttonStyle(active: boolean, tone: "default" | "metronome" = "default")
     boxShadow: active && isMetronome ? "0 0 0 1px rgba(94, 234, 212, 0.24), 0 8px 18px rgba(20, 184, 166, 0.22)" : "none",
   };
 }
-
-const fieldWrapStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  opacity: 0.75,
-};
 
 const inputStyle: React.CSSProperties = {
   background: "#0f141c",

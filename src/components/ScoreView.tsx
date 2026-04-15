@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type TrackName = "HH" | "SD" | "BD";
 
@@ -36,15 +36,10 @@ const PRACTICE_BAR_COUNT = 4;
 const VISIBLE_BAR_COUNT = 5;
 
 export default function ScoreView({
-  duration,
   bpm,
   beatsPerBar,
   stepsPerBeat,
-  currentTime,
   currentStep,
-  loopStart,
-  loopEnd,
-  hasLoop,
   trackSteps,
   onGridTimeAction,
   onSeek,
