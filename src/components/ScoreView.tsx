@@ -94,9 +94,6 @@ export default function ScoreView({
   const pageStartStep = pageStartBar * stepsPerBar;
   const visibleStepCount = stepsPerBar * VISIBLE_BAR_COUNT;
   const previewBarStartStep = pageStartStep + stepsPerBar * PRACTICE_BAR_COUNT;
-  const currentBeatIndexInBar = Math.floor((currentStep % stepsPerBar) / stepsPerBeat);
-  const currentBeatNumber = currentBeatIndexInBar + 1;
-  const currentBeatStartStep = Math.floor(currentStep / stepsPerBeat) * stepsPerBeat;
   const naturalPageWidth = LEFT_GUTTER + visibleStepCount * baseStepWidth;
   const pageWidth = containerWidth > 0 ? Math.min(containerWidth, naturalPageWidth) : naturalPageWidth;
   const availableGridWidth = Math.max(pageWidth - LEFT_GUTTER, 0);
@@ -106,10 +103,7 @@ export default function ScoreView({
       : baseStepWidth;
   const stepWidth = fittedStepWidth;
   const barWidth = stepsPerBar * stepWidth;
-  const beatWidth = stepsPerBeat * stepWidth;
   const visibleWidth = barWidth * VISIBLE_BAR_COUNT;
-  const currentBeatLeft = (currentBeatStartStep - pageStartStep) * stepWidth;
-  const isCurrentBeatVisible = currentBeatLeft >= 0 && currentBeatLeft + beatWidth <= visibleWidth;
 
   useEffect(() => {
     if (pageStartBarOverride === null) return;
@@ -317,37 +311,7 @@ export default function ScoreView({
                 height: "100%",
                 background: "#0f141c",
               }}
-            >
-              {isCurrentBeatVisible ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: currentBeatLeft,
-                    top: 6,
-                    width: beatWidth,
-                    height: HEADER_HEIGHT - 12,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 10,
-                    background:
-                      currentBeatNumber === 1
-                        ? "rgba(248, 250, 252, 0.16)"
-                        : "rgba(148, 163, 184, 0.12)",
-                    border:
-                      currentBeatNumber === 1
-                        ? "1px solid rgba(248, 250, 252, 0.4)"
-                        : "1px solid rgba(148, 163, 184, 0.28)",
-                    color: currentBeatNumber === 1 ? "#f8fafc" : "#cbd5e1",
-                    fontSize: currentBeatNumber === 1 ? 18 : 16,
-                    fontWeight: currentBeatNumber === 1 ? 800 : 700,
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {currentBeatNumber}
-                </div>
-              ) : null}
-            </div>
+            />
           </div>
 
           {/* Rows */}
