@@ -14,6 +14,13 @@ type Props = {
   hasLoop: boolean;
   trackSteps: Record<TrackName, Set<number>>;
   onGridTimeAction: (time: number) => void;
+  onSeek?: (time: number) => void;
+  onSetLoopStart?: (time: number) => void;
+  onSetLoopEnd?: (time: number) => void;
+  snapTime?: (time: number) => number;
+  stepWidth?: number;
+  zoom?: number;
+  onMiniMapSeek?: (time: number) => void;
 };
 
 const TRACKS: TrackName[] = ["HH", "SD", "BD"];
@@ -38,6 +45,7 @@ export default function ScoreView({
   hasLoop,
   trackSteps,
   onGridTimeAction,
+  onSeek,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -67,6 +75,7 @@ export default function ScoreView({
   }, []);
 
   const secondsPerBeat = 60 / bpm;
+  const secondsPerBar = secondsPerBeat * beatsPerBar;
   const stepDuration = secondsPerBeat / stepsPerBeat;
   const stepsPerBar = beatsPerBar * stepsPerBeat;
 
@@ -178,11 +187,15 @@ export default function ScoreView({
                 const barNumber = pageStartBar + barIndex + 1;
                 const targetPageStartBar = Math.floor((barNumber - 1) / 4) * 4;
                 const barLeft = barIndex * barWidth;
+                const targetBarTime = (barNumber - 1) * secondsPerBar;
 
                 return (
                   <button
                     key={`bar-${barIndex}`}
-                    onClick={() => setPageStartBarOverride(targetPageStartBar)}
+                    onClick={() => {
+                      setPageStartBarOverride(targetPageStartBar);
+                      onSeek?.(targetBarTime);
+                    }}
                     style={{
                       position: "absolute",
                       left: barLeft,

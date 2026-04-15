@@ -44,6 +44,9 @@ const TRACK_TYPE_OPTIONS: Array<{ id: TrackTypeId; label: string }> = [
   { id: "guitar", label: "吉他轨" },
 ];
 
+const TARGET_TEST_BAR_COUNT = 32;
+const DEFAULT_BEATS_PER_BAR = 4;
+
 const PRACTICE_CONTENT: PracticeContent = {
   title: "Billie Jean",
   scoreData: drumDataRaw as DrumDataShape,
@@ -120,6 +123,49 @@ function normalizeDrumData(raw: DrumDataShape): {
   };
 }
 
+function extendDrumDataToBars(
+  raw: DrumDataShape,
+  targetBarCount: number,
+  beatsPerBar: number
+): DrumDataShape {
+  const normalized = normalizeDrumData(raw);
+  const secondsPerBeat = 60 / normalized.bpm;
+  const secondsPerBar = secondsPerBeat * beatsPerBar;
+  const currentBarCount = Math.ceil(normalized.duration / secondsPerBar);
+
+  if (currentBarCount >= targetBarCount || normalized.events.length === 0) {
+    return {
+      bpm: normalized.bpm,
+      duration: normalized.duration,
+      events: normalized.events,
+    };
+  }
+
+  const maxEventTime = Math.max(...normalized.events.map((event) => event.time));
+  const patternBarCount = Math.max(1, Math.ceil((maxEventTime + 0.0001) / secondsPerBar));
+  const patternDuration = patternBarCount * secondsPerBar;
+  const targetDuration = targetBarCount * secondsPerBar;
+  const repeatCount = Math.ceil(targetDuration / patternDuration);
+
+  const repeatedEvents: DrumEvent[] = [];
+
+  for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex += 1) {
+    const offset = repeatIndex * patternDuration;
+
+    for (const event of normalized.events) {
+      const nextTime = event.time + offset;
+      if (nextTime >= targetDuration) continue;
+      repeatedEvents.push({ ...event, time: nextTime });
+    }
+  }
+
+  return {
+    bpm: normalized.bpm,
+    duration: targetDuration,
+    events: repeatedEvents,
+  };
+}
+
 function buildStepMap(
   events: DrumEvent[],
   stepCount: number,
@@ -145,14 +191,25 @@ export default function App() {
   const [selectedTrackType, setSelectedTrackType] = useState<TrackTypeId>("original");
 
   const currentTrackType = PRACTICE_CONTENT.trackTypes[selectedTrackType];
-  const parsed = useMemo(() => normalizeDrumData(PRACTICE_CONTENT.scoreData), []);
+  const parsed = useMemo(
+    () =>
+      normalizeDrumData(
+        extendDrumDataToBars(
+          PRACTICE_CONTENT.scoreData,
+          TARGET_TEST_BAR_COUNT,
+          DEFAULT_BEATS_PER_BAR
+        )
+      ),
+    []
+  );
   const bpm = parsed.bpm;
   const duration = parsed.duration;
   const events = parsed.events;
 
-  const beatsPerBar = 4;
+  const beatsPerBar = DEFAULT_BEATS_PER_BAR;
   const stepsPerBeat = 4;
   const secondsPerBeat = 60 / bpm;
+  const secondsPerBar = secondsPerBeat * beatsPerBar;
   const stepDuration = secondsPerBeat / stepsPerBeat;
   const totalSteps = Math.ceil(duration / stepDuration);
   const barSteps = beatsPerBar * stepsPerBeat;
@@ -235,10 +292,10 @@ export default function App() {
 
   const jumpToBar = useCallback(
     (barIndex: number) => {
-      const targetStep = clamp(barIndex * barSteps, 0, totalSteps - 1);
-      seekToSnapped(targetStep * stepDuration);
+      const targetTime = clamp(barIndex * secondsPerBar, 0, playbackDuration);
+      seekTo(targetTime);
     },
-    [barSteps, seekToSnapped, stepDuration, totalSteps]
+    [playbackDuration, secondsPerBar, seekTo]
   );
 
   const zoomIn = useCallback(() => {
@@ -1343,7 +1400,7 @@ export default function App() {
           hasLoop={hasLoop}
           trackSteps={stepMap}
           onGridTimeAction={handleGridTimeAction}
-          onSeek={seekToSnapped}
+          onSeek={seekTo}
           onSetLoopStart={setLoopStartAt}
           onSetLoopEnd={setLoopEndAt}
           snapTime={snapTime}
