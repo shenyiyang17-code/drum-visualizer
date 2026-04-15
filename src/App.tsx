@@ -46,6 +46,8 @@ const TRACK_TYPE_OPTIONS: Array<{ id: TrackTypeId; label: string }> = [
 
 const TARGET_TEST_BAR_COUNT = 32;
 const DEFAULT_BEATS_PER_BAR = 4;
+const AUDIO_BAR_START_TIME = 0;
+const AUDIO_BAR_END_TIME = 62;
 
 const PRACTICE_CONTENT: PracticeContent = {
   title: "Billie Jean",
@@ -290,12 +292,38 @@ export default function App() {
     [seekTo, snapTime]
   );
 
+  const getCalibratedBarTime = useCallback(
+    (barIndex: number) => {
+      const lastBarIndex = Math.max(bars - 1, 0);
+      const clampedBarIndex = clamp(barIndex, 0, lastBarIndex);
+
+      if (lastBarIndex === 0) {
+        return clamp(AUDIO_BAR_START_TIME, 0, playbackDuration);
+      }
+
+      const normalizedBarPosition = clampedBarIndex / lastBarIndex;
+      const calibratedTime =
+        AUDIO_BAR_START_TIME +
+        normalizedBarPosition * (AUDIO_BAR_END_TIME - AUDIO_BAR_START_TIME);
+
+      return clamp(calibratedTime, 0, playbackDuration);
+    },
+    [bars, playbackDuration]
+  );
+
   const jumpToBar = useCallback(
     (barIndex: number) => {
-      const targetTime = clamp(barIndex * secondsPerBar, 0, playbackDuration);
-      seekTo(targetTime);
+      seekTo(getCalibratedBarTime(barIndex));
     },
-    [playbackDuration, secondsPerBar, seekTo]
+    [getCalibratedBarTime, seekTo]
+  );
+
+  const seekToBarTime = useCallback(
+    (barTime: number) => {
+      const estimatedBarIndex = secondsPerBar > 0 ? Math.round(barTime / secondsPerBar) : 0;
+      seekTo(getCalibratedBarTime(estimatedBarIndex));
+    },
+    [getCalibratedBarTime, secondsPerBar, seekTo]
   );
 
   const zoomIn = useCallback(() => {
@@ -1400,7 +1428,7 @@ export default function App() {
           hasLoop={hasLoop}
           trackSteps={stepMap}
           onGridTimeAction={handleGridTimeAction}
-          onSeek={seekTo}
+          onSeek={seekToBarTime}
           onSetLoopStart={setLoopStartAt}
           onSetLoopEnd={setLoopEndAt}
           snapTime={snapTime}
