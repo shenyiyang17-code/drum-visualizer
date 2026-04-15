@@ -15,6 +15,8 @@ type Props = {
   trackSteps: Record<TrackName, Set<number>>;
   onGridTimeAction: (time: number) => void;
   onSeek?: (time: number) => void;
+  countInActive?: boolean;
+  countInBeat?: number;
   onSetLoopStart?: (time: number) => void;
   onSetLoopEnd?: (time: number) => void;
   snapTime?: (time: number) => number;
@@ -46,6 +48,8 @@ export default function ScoreView({
   trackSteps,
   onGridTimeAction,
   onSeek,
+  countInActive = false,
+  countInBeat = 1,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -181,6 +185,46 @@ export default function ScoreView({
                 overflow: "hidden",
               }}
             >
+              {countInActive ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 3,
+                    width: barWidth,
+                    height: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-evenly",
+                    pointerEvents: "none",
+                    zIndex: 2,
+                  }}
+                >
+                  {Array.from({ length: beatsPerBar }).map((_, beatIndex) => {
+                    const beatNumber = beatIndex + 1;
+                    const isActiveBeat = beatNumber === countInBeat;
+
+                    return (
+                      <span
+                        key={`count-in-${beatNumber}`}
+                        style={{
+                          minWidth: 12,
+                          textAlign: "center",
+                          fontSize: 10,
+                          lineHeight: 1,
+                          color: isActiveBeat ? "#f8fafc" : "rgba(203, 213, 225, 0.55)",
+                          fontWeight: isActiveBeat ? 800 : 600,
+                          transform: isActiveBeat ? "scale(1.08)" : "scale(1)",
+                          transition: "color 120ms ease, transform 120ms ease",
+                        }}
+                      >
+                        {beatNumber}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
+
               {Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barIndex) => {
                 const isPreviewBar = barIndex === 4;
                 const isActivePageBar = barIndex < PRACTICE_BAR_COUNT;

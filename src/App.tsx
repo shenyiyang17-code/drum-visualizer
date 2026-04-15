@@ -256,6 +256,8 @@ export default function App() {
   const audioSrc = importedAudioUrl ?? encodeURI(currentTrackType.audioSrc);
   const displayedDuration = audioDuration ?? duration;
   const playbackDuration = audioDuration ?? duration;
+  const countInActive = isPlaying && currentTime >= 0 && currentTime < secondsPerBar;
+  const countInBeat = clamp(Math.floor(currentTime / secondsPerBeat) + 1, 1, beatsPerBar);
   const playbackProgress = playbackDuration > 0 ? clamp(currentTime / playbackDuration, 0, 1) : 0;
   const scrubBarMarkers = useMemo(
     () => Array.from({ length: Math.max(bars, 1) }, (_, barIndex) => barIndex),
@@ -1429,6 +1431,8 @@ export default function App() {
           trackSteps={stepMap}
           onGridTimeAction={handleGridTimeAction}
           onSeek={seekToBarTime}
+          countInActive={countInActive}
+          countInBeat={countInBeat}
           onSetLoopStart={setLoopStartAt}
           onSetLoopEnd={setLoopEndAt}
           snapTime={snapTime}
