@@ -25,10 +25,45 @@ type DrumDataShape =
       }>;
     };
 
-const AUDIO_SRC = "/Michael Jackson Billie Jean.wav";
+type TrackTypeId = "original" | "drums" | "guitar";
+
+type TrackTypeConfig = {
+  label: string;
+  audioSrc: string;
+};
+
+type PracticeContent = {
+  title: string;
+  scoreData: DrumDataShape;
+  trackTypes: Record<TrackTypeId, TrackTypeConfig>;
+};
+
+const TRACK_TYPE_OPTIONS: Array<{ id: TrackTypeId; label: string }> = [
+  { id: "original", label: "原曲" },
+  { id: "drums", label: "鼓轨" },
+  { id: "guitar", label: "吉他轨" },
+];
+
+const PRACTICE_CONTENT: PracticeContent = {
+  title: "Billie Jean",
+  scoreData: drumDataRaw as DrumDataShape,
+  trackTypes: {
+    original: { label: "原曲", audioSrc: "/audio/billie-jean.wav" },
+    drums: { label: "鼓轨", audioSrc: "/audio/billie-jean.wav" },
+    guitar: { label: "吉他轨", audioSrc: "/audio/billie-jean.wav" },
+  },
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function formatClockTime(value: number) {
+  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  const totalSeconds = Math.floor(safeValue);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function normalizeTrackName(input: string | undefined): TrackName | null {
@@ -107,7 +142,10 @@ function buildStepMap(
 }
 
 export default function App() {
-  const parsed = useMemo(() => normalizeDrumData(drumDataRaw as DrumDataShape), []);
+  const [selectedTrackType, setSelectedTrackType] = useState<TrackTypeId>("original");
+
+  const currentTrackType = PRACTICE_CONTENT.trackTypes[selectedTrackType];
+  const parsed = useMemo(() => normalizeDrumData(PRACTICE_CONTENT.scoreData), []);
   const bpm = parsed.bpm;
   const duration = parsed.duration;
   const events = parsed.events;
@@ -126,10 +164,18 @@ export default function App() {
   );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const scrubBarRef = useRef<HTMLDivElement | null>(null);
+  const isScrubbingRef = useRef(false);
+  const resumePlaybackAfterScrubRef = useRef(false);
   const rafRef = useRef<number | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null);
+  const [importedAudioUrl, setImportedAudioUrl] = useState<string | null>(null);
+  const [audioDuration, setAudioDuration] = useState<number | null>(null);
 
   const [mode, setMode] = useState<EditMode>(null);
 
@@ -147,6 +193,13 @@ export default function App() {
   const lastMetroBeatRef = useRef<number>(-1);
 
   const hasLoop = loopStart !== null && loopEnd !== null && loopEnd > loopStart;
+  const audioTitle = selectedAudioFile?.name ?? `${PRACTICE_CONTENT.title} · ${currentTrackType.label}`;
+  const audioSrc = importedAudioUrl ?? encodeURI(currentTrackType.audioSrc);
+  const displayedDuration = audioDuration ?? duration;
+  const playbackDuration = audioDuration ?? duration;
+  const playbackProgress = playbackDuration > 0 ? clamp(currentTime / playbackDuration, 0, 1) : 0;
+  const formattedCurrentTime = formatClockTime(currentTime);
+  const formattedDisplayedDuration = formatClockTime(displayedDuration);
 
   const snapTime = useCallback(
     (t: number) => {
@@ -161,11 +214,12 @@ export default function App() {
     (t: number) => {
       const audio = audioRef.current;
       if (!audio) return;
-      const next = clamp(t, 0, duration);
+      const next = clamp(t, 0, playbackDuration);
       audio.currentTime = next;
       setCurrentTime(next);
+      setCurrentStep(clamp(Math.round(next / stepDuration), 0, totalSteps - 1));
     },
-    [duration]
+    [playbackDuration, stepDuration, totalSteps]
   );
 
   const seekToSnapped = useCallback(
@@ -245,6 +299,149 @@ export default function App() {
     else play();
   }, [isPlaying, pause, play]);
 
+  const resetPlaybackState = useCallback(() => {
+    const audio = audioRef.current;
+
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    resumePlaybackAfterScrubRef.current = false;
+    isScrubbingRef.current = false;
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setCurrentStep(0);
+    setLoopStart(null);
+    setLoopEnd(null);
+    setMode(null);
+    setAudioDuration(null);
+  }, []);
+
+  const openAudioPicker = useCallback(() => {
+    audioInputRef.current?.click();
+  }, []);
+
+  const handleAudioFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const nextUrl = URL.createObjectURL(file);
+
+    resetPlaybackState();
+    setSelectedAudioFile(file);
+    setImportedAudioUrl((prevUrl) => {
+      if (prevUrl) URL.revokeObjectURL(prevUrl);
+      return nextUrl;
+    });
+    event.target.value = "";
+  }, [resetPlaybackState]);
+
+  const handleTrackTypeChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const nextTrackType = event.target.value as TrackTypeId;
+      if (nextTrackType === selectedTrackType) return;
+
+      resetPlaybackState();
+      setSelectedAudioFile(null);
+      setImportedAudioUrl((prevUrl) => {
+        if (prevUrl) URL.revokeObjectURL(prevUrl);
+        return null;
+      });
+      setSelectedTrackType(nextTrackType);
+    },
+    [resetPlaybackState, selectedTrackType]
+  );
+
+  const seekFromScrubRatio = useCallback(
+    (ratio: number) => {
+      if (playbackDuration <= 0) return;
+      seekTo(clamp(ratio, 0, 1) * playbackDuration);
+    },
+    [playbackDuration, seekTo]
+  );
+
+  const updateScrubFromPointer = useCallback(
+    (clientX: number) => {
+      const scrubBar = scrubBarRef.current;
+      if (!scrubBar || playbackDuration <= 0) return;
+
+      const rect = scrubBar.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const ratio = (clientX - rect.left) / rect.width;
+      seekFromScrubRatio(ratio);
+    },
+    [playbackDuration, seekFromScrubRatio]
+  );
+
+  const handleScrubPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const audio = audioRef.current;
+      event.preventDefault();
+      resumePlaybackAfterScrubRef.current = !!audio && !audio.paused;
+      isScrubbingRef.current = true;
+
+      if (audio && !audio.paused) {
+        audio.pause();
+        setIsPlaying(false);
+      }
+
+      event.currentTarget.setPointerCapture(event.pointerId);
+      updateScrubFromPointer(event.clientX);
+    },
+    [updateScrubFromPointer]
+  );
+
+  const handleScrubPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!isScrubbingRef.current) return;
+      updateScrubFromPointer(event.clientX);
+    },
+    [updateScrubFromPointer]
+  );
+
+  const finishScrub = useCallback(
+    (clientX?: number) => {
+      if (!isScrubbingRef.current) return;
+
+      if (typeof clientX === "number") {
+        updateScrubFromPointer(clientX);
+      }
+
+      isScrubbingRef.current = false;
+
+      if (resumePlaybackAfterScrubRef.current) {
+        resumePlaybackAfterScrubRef.current = false;
+        void play();
+        return;
+      }
+
+      resumePlaybackAfterScrubRef.current = false;
+    },
+    [play, updateScrubFromPointer]
+  );
+
+  const handleScrubPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      finishScrub(event.clientX);
+    },
+    [finishScrub]
+  );
+
+  const handleScrubPointerCancel = useCallback(() => {
+    finishScrub();
+  }, [finishScrub]);
+
+  const handleScrubLostPointerCapture = useCallback(() => {
+    finishScrub();
+  }, [finishScrub]);
+
   const clearLoop = useCallback(() => {
     setMode(null);
     setLoopStart(null);
@@ -317,24 +514,40 @@ export default function App() {
     [mode, seekTo, setLoopEndAt, setLoopStartAt, snapTime]
   );
 
-  const currentStep = Math.round(currentTime / stepDuration);
   const currentBar = Math.floor(currentStep / barSteps);
   const maxLoopInputValue = totalSteps * stepDuration;
+
+  const syncPlaybackPosition = useCallback(
+    (nextTime: number) => {
+      const clampedTime = clamp(nextTime, 0, playbackDuration);
+      const nextStep = clamp(Math.round(clampedTime / stepDuration), 0, totalSteps - 1);
+      setCurrentTime(clampedTime);
+      setCurrentStep(nextStep);
+    },
+    [playbackDuration, stepDuration, totalSteps]
+  );
+
+  const syncFromAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const audioTime = audio.currentTime;
+
+    if (hasLoop && loopStart !== null && loopEnd !== null && audioTime >= loopEnd) {
+      audio.currentTime = loopStart;
+      syncPlaybackPosition(loopStart);
+      return;
+    }
+
+    syncPlaybackPosition(audioTime);
+  }, [hasLoop, loopEnd, loopStart, syncPlaybackPosition]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
     const tick = () => {
-      const t = audio.currentTime;
-
-      if (hasLoop && loopStart !== null && loopEnd !== null && t >= loopEnd) {
-        audio.currentTime = loopStart;
-        setCurrentTime(loopStart);
-      } else {
-        setCurrentTime(t);
-      }
-
+      syncFromAudio();
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -351,19 +564,39 @@ export default function App() {
         rafRef.current = null;
       }
     };
-  }, [hasLoop, isPlaying, loopEnd, loopStart]);
+  }, [isPlaying, syncFromAudio]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
+    const syncOnAudioEvent = () => {
+      syncFromAudio();
+    };
+
     const onEnded = () => {
+      audio.pause();
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      resumePlaybackAfterScrubRef.current = false;
+      isScrubbingRef.current = false;
+      syncPlaybackPosition(audio.duration || audio.currentTime || playbackDuration);
       setIsPlaying(false);
     };
 
+    audio.addEventListener("timeupdate", syncOnAudioEvent);
+    audio.addEventListener("seeking", syncOnAudioEvent);
+    audio.addEventListener("seeked", syncOnAudioEvent);
     audio.addEventListener("ended", onEnded);
-    return () => audio.removeEventListener("ended", onEnded);
-  }, []);
+    return () => {
+      audio.removeEventListener("timeupdate", syncOnAudioEvent);
+      audio.removeEventListener("seeking", syncOnAudioEvent);
+      audio.removeEventListener("seeked", syncOnAudioEvent);
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [playbackDuration, syncFromAudio, syncPlaybackPosition]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -380,12 +613,17 @@ export default function App() {
     const onLoadedMetadata = () => {
       audio.defaultPlaybackRate = playbackSpeed;
       audio.playbackRate = playbackSpeed;
+      syncPlaybackPosition(audio.currentTime);
+      if (Number.isFinite(audio.duration)) {
+        setAudioDuration(audio.duration);
+      }
       console.log("audio loadedmetadata", { duration: audio.duration, src: audio.src });
     };
 
     const onCanPlay = () => {
       audio.defaultPlaybackRate = playbackSpeed;
       audio.playbackRate = playbackSpeed;
+      syncPlaybackPosition(audio.currentTime);
       console.log("audio canplay", { src: audio.src });
     };
 
@@ -402,7 +640,7 @@ export default function App() {
       audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("error", onError);
     };
-  }, [playbackSpeed]);
+  }, [playbackSpeed, syncPlaybackPosition]);
 
   const ensureAudioContext = useCallback(() => {
     if (!audioContextRef.current) {
@@ -565,6 +803,21 @@ export default function App() {
     return () => window.removeEventListener("wheel", onWheel as EventListener);
   }, []);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.load();
+    audio.currentTime = 0;
+    syncPlaybackPosition(0);
+  }, [audioSrc]);
+
+  useEffect(() => {
+    return () => {
+      if (importedAudioUrl) URL.revokeObjectURL(importedAudioUrl);
+    };
+  }, [importedAudioUrl]);
+
   return (
     <div
       style={{
@@ -577,7 +830,14 @@ export default function App() {
           'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      <audio ref={audioRef} src={encodeURI(AUDIO_SRC)} preload="auto" />
+      <audio ref={audioRef} src={audioSrc} preload="auto" />
+      <input
+        ref={audioInputRef}
+        type="file"
+        accept="audio/*"
+        onChange={handleAudioFileChange}
+        style={{ display: "none" }}
+      />
 
       <div
         style={{
@@ -590,9 +850,149 @@ export default function App() {
       >
         <div>
           <h1 style={{ margin: 0, fontSize: 28 }}>drum-visualizer</h1>
-          <div style={{ opacity: 0.72, marginTop: 6 }}>
-            Zoom / Bar Navigation / Mini Map / DAW-style practice workflow
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            padding: "0 2px",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 15,
+                  color: "#cbd5e1",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  minWidth: 0,
+                  flex: 1,
+                }}
+              >
+                {audioTitle}
+              </div>
+
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: "#94a3b8",
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>轨道类型</span>
+                <select
+                  value={selectedTrackType}
+                  onChange={handleTrackTypeChange}
+                  style={{
+                    border: "1px solid #344155",
+                    background: "#202735",
+                    color: "#e5e7eb",
+                    borderRadius: 9,
+                    padding: "6px 10px",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    outline: "none",
+                  }}
+                >
+                  {TRACK_TYPE_OPTIONS.map((trackType) => (
+                    <option key={trackType.id} value={trackType.id}>
+                      {trackType.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div
+              ref={scrubBarRef}
+              onPointerDown={handleScrubPointerDown}
+              onPointerMove={handleScrubPointerMove}
+              onPointerUp={handleScrubPointerUp}
+              onPointerCancel={handleScrubPointerCancel}
+              onLostPointerCapture={handleScrubLostPointerCapture}
+              style={{
+                position: "relative",
+                height: 14,
+                borderRadius: 999,
+                background: "rgba(51, 65, 85, 0.72)",
+                boxShadow: "inset 0 0 0 1px rgba(71, 85, 105, 0.55)",
+                cursor: "pointer",
+                touchAction: "none",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: `${playbackProgress * 100}%`,
+                  background: "linear-gradient(90deg, rgba(96, 165, 250, 0.88) 0%, rgba(125, 211, 252, 0.92) 100%)",
+                  borderRadius: 999,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: `calc(${playbackProgress * 100}% - 6px)`,
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  background: "#f8fafc",
+                  boxShadow: "0 0 0 2px rgba(15, 23, 42, 0.45)",
+                  transform: "translateY(-50%)",
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                fontSize: 12,
+                color: "#94a3b8",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              <span>{formattedCurrentTime}</span>
+              <span>{formattedDisplayedDuration}</span>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={openAudioPicker}
+            style={{
+              border: "1px solid #344155",
+              background: "#202735",
+              color: "#e5e7eb",
+              borderRadius: 10,
+              padding: "10px 14px",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            导入音频
+          </button>
         </div>
 
         <div
@@ -616,7 +1016,7 @@ export default function App() {
           >
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
               <button onClick={togglePlay} style={buttonStyle(isPlaying)}>
-                播放
+                {isPlaying ? "暂停" : "播放"}
               </button>
 
               <button
@@ -676,7 +1076,7 @@ export default function App() {
                 onClick={() => setMode("setLoopStart")}
                 style={buttonStyle(mode === "setLoopStart")}
               >
-                设置循环开始
+                {mode === "setLoopStart" ? "确定循环开始" : "设置循环开始"}
               </button>
 
               <input
@@ -758,7 +1158,7 @@ export default function App() {
                 onClick={() => setMode("setLoopEnd")}
                 style={buttonStyle(mode === "setLoopEnd")}
               >
-                设置循环结束
+                {mode === "setLoopEnd" ? "确定循环结束" : "设置循环结束"}
               </button>
 
               <button
@@ -827,13 +1227,7 @@ export default function App() {
             <InfoCard label="当前时间" value={`${currentTime.toFixed(3)}s`} />
             <InfoCard label="当前 Step" value={`${currentStep} / ${totalSteps - 1}`} />
             <InfoCard label="当前小节" value={`${currentBar + 1} / ${bars}`} />
-            <InfoCard label="总时长" value={`${duration.toFixed(2)}s`} />
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
-            <div style={{ opacity: 0.8 }}>
-              快捷键：Space / Enter / [ / ] / ← → / Shift+← → / - / + / 0
-            </div>
+            <InfoCard label="总时长" value={`${displayedDuration.toFixed(1)}s`} />
           </div>
 
           <div
@@ -923,13 +1317,13 @@ function InfoCard({ label, value }: { label: string; value: string }) {
 function buttonStyle(active: boolean): React.CSSProperties {
   return {
     background: active ? "#3b82f6" : "#202735",
-    color: "#fff",
+    color: active ? "#f8fafc" : "#fff",
     border: "1px solid " + (active ? "#60a5fa" : "#344155"),
     borderRadius: 10,
     minHeight: 42,
     padding: "0 14px",
     cursor: "pointer",
-    fontWeight: 600,
+    fontWeight: active ? 700 : 600,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",

@@ -174,6 +174,7 @@ export default function ScoreView({
             >
               {Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barIndex) => {
                 const isPreviewBar = barIndex === 4;
+                const isActivePageBar = barIndex < PRACTICE_BAR_COUNT;
                 const barNumber = pageStartBar + barIndex + 1;
                 const targetPageStartBar = Math.floor((barNumber - 1) / 4) * 4;
                 const barLeft = barIndex * barWidth;
@@ -189,20 +190,31 @@ export default function ScoreView({
                       width: barWidth,
                       height: "100%",
                       border: "none",
-                      borderLeft: barIndex === PRACTICE_BAR_COUNT ? "2px solid #3b82f6" : "1px solid rgba(148, 163, 184, 0.22)",
+                      borderLeft:
+                        barIndex === PRACTICE_BAR_COUNT
+                          ? "2px solid #60a5fa"
+                          : isActivePageBar
+                            ? "1px solid rgba(96, 165, 250, 0.28)"
+                            : "1px solid rgba(148, 163, 184, 0.22)",
                       borderRight:
                         barIndex === VISIBLE_BAR_COUNT - 1
-                          ? "1px solid rgba(148, 163, 184, 0.22)"
+                          ? isPreviewBar
+                            ? "1px solid rgba(148, 163, 184, 0.22)"
+                            : "1px solid rgba(96, 165, 250, 0.28)"
                           : "none",
-                      background: isPreviewBar ? "rgba(15, 23, 34, 0.9)" : "rgba(20, 25, 35, 0.92)",
-                      color: isPreviewBar ? "#94a3b8" : "#f8fafc",
+                      background: isPreviewBar
+                        ? "rgba(15, 23, 34, 0.9)"
+                        : isActivePageBar
+                          ? "rgba(20, 25, 35, 0.94)"
+                          : "rgba(20, 25, 35, 0.92)",
+                      color: isPreviewBar ? "#94a3b8" : isActivePageBar ? "#e2e8f0" : "#cbd5e1",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 6,
                       padding: 0,
                       margin: 0,
-                      fontWeight: isPreviewBar ? 700 : 800,
+                      fontWeight: isPreviewBar ? 700 : isActivePageBar ? 700 : 600,
                       fontSize: 14,
                       cursor: "pointer",
                     }}
