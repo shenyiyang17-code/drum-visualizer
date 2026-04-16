@@ -477,7 +477,14 @@ export default function ScoreView({
                       const left =
                         ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
                         visibleWidth;
-                      const midiDebugSymbol = track === "HH" ? "x" : "●";
+                      const midiDebugSymbol =
+                        track === "HH"
+                          ? event.articulation === "pedal"
+                            ? "+"
+                            : event.articulation === "open"
+                              ? "o"
+                              : "x"
+                          : "●";
 
                       return (
                         <div
