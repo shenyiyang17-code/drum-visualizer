@@ -5,6 +5,7 @@ type TrackName = "HH" | "SD" | "BD";
 type MidiDebugEvent = {
   time: number;
   stepIndex: number;
+  barIndex: number;
   instrument: string;
   articulation: string;
   velocity: number;
@@ -452,36 +453,59 @@ export default function ScoreView({
                   })}
 
                   {/* MIDI events */}
-                  {visibleMidiDebugEvents
-                    .filter((event) => event.instrument === lane)
-                    .map((event, index) => {
-                      const left =
-                        (event.stepIndex - pageStartStep) * stepWidth + stepWidth / 2;
-                      const isTom = lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR";
-                      const symbol = isTom ? "●" : "x";
+                  {Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barOffset) => {
+                    const barIndex = pageStartBar + barOffset;
+                    const barEvents = visibleMidiDebugEvents.filter(
+                      (event) => event.instrument === lane && event.barIndex === barIndex
+                    );
 
-                      return (
-                        <div
-                          key={`midi-${lane}-${event.time}-${index}`}
-                          style={{
-                            position: "absolute",
-                            left,
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            opacity: lane === "RD" && activeCymbal !== "RD" ? 0.15 : 0.95,
-                            pointerEvents: "none",
-                            zIndex: 4,
-                            color: "#f59e0b",
-                            fontSize: 16,
-                            fontWeight: 700,
-                            lineHeight: 1,
-                            textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
-                          }}
-                        >
-                          {symbol}
-                        </div>
-                      );
-                    })}
+                    if (barEvents.length === 0) return null;
+
+                    return (
+                      <div
+                        key={`midi-bar-${lane}-${barIndex}`}
+                        style={{
+                          position: "absolute",
+                          left: barOffset * barWidth,
+                          top: 0,
+                          width: barWidth,
+                          height: "100%",
+                          pointerEvents: "none",
+                          zIndex: 4,
+                        }}
+                      >
+                        {barEvents.map((event, index) => {
+                          const stepInBar = event.stepIndex - event.barIndex * stepsPerBar;
+                          const left = stepInBar * stepWidth + stepWidth / 2;
+                          const isTom =
+                            lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR";
+                          const symbol = isTom ? "●" : "x";
+
+                          return (
+                            <div
+                              key={`midi-${lane}-${event.stepIndex}-${index}`}
+                              style={{
+                                position: "absolute",
+                                left,
+                                top: "50%",
+                                transform: "translate(-50%, -50%)",
+                                opacity: lane === "RD" && activeCymbal !== "RD" ? 0.15 : 0.95,
+                                pointerEvents: "none",
+                                zIndex: 4,
+                                color: "#f59e0b",
+                                fontSize: 16,
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                              }}
+                            >
+                              {symbol}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -643,39 +667,60 @@ export default function ScoreView({
                       trackEvents = Array.from(byStep.values());
                     }
 
-                    return trackEvents.map((event, index) => {
-                      const left =
-                        (event.stepIndex - pageStartStep) * stepWidth + stepWidth / 2;
-                      const isDeemphasized =
-                        track === "HH" && activeCymbal === "RD";
-                      const midiDebugSymbol =
-                        track === "HH"
-                          ? event.articulation === "pedal"
-                            ? "+"
-                            : event.articulation === "open"
-                              ? "o"
-                              : "x"
-                          : "●";
+                    return Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barOffset) => {
+                      const barIndex = pageStartBar + barOffset;
+                      const barEvents = trackEvents.filter((event) => event.barIndex === barIndex);
+
+                      if (barEvents.length === 0) return null;
 
                       return (
                         <div
-                          key={`midi-debug-${track}-${event.time}-${index}`}
+                          key={`midi-debug-bar-${track}-${barIndex}`}
                           style={{
                             position: "absolute",
-                            left,
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            opacity: isDeemphasized ? 0.15 : 0.95,
+                            left: barOffset * barWidth,
+                            top: 0,
+                            width: barWidth,
+                            height: "100%",
                             pointerEvents: "none",
                             zIndex: 4,
-                            color: "#f59e0b",
-                            fontSize: 16,
-                            fontWeight: 700,
-                            lineHeight: 1,
-                            textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
                           }}
                         >
-                          {midiDebugSymbol}
+                          {barEvents.map((event, index) => {
+                            const stepInBar = event.stepIndex - event.barIndex * stepsPerBar;
+                            const left = stepInBar * stepWidth + stepWidth / 2;
+                            const isDeemphasized = track === "HH" && activeCymbal === "RD";
+                            const midiDebugSymbol =
+                              track === "HH"
+                                ? event.articulation === "pedal"
+                                  ? "+"
+                                  : event.articulation === "open"
+                                    ? "o"
+                                    : "x"
+                                : "●";
+
+                            return (
+                              <div
+                                key={`midi-debug-${track}-${event.stepIndex}-${index}`}
+                                style={{
+                                  position: "absolute",
+                                  left,
+                                  top: "50%",
+                                  transform: "translate(-50%, -50%)",
+                                  opacity: isDeemphasized ? 0.15 : 0.95,
+                                  pointerEvents: "none",
+                                  zIndex: 4,
+                                  color: "#f59e0b",
+                                  fontSize: 16,
+                                  fontWeight: 700,
+                                  lineHeight: 1,
+                                  textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                                }}
+                              >
+                                {midiDebugSymbol}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     });
