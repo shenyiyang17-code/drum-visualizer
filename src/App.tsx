@@ -393,7 +393,6 @@ export default function App() {
   const metronomeDotBeat = metronomeDotActive
     ? ((Math.floor(visualCurrentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
     : 1;
-  const scoreTrackSteps = midiStepMap;
 
   void stepMap;
 
@@ -1741,7 +1740,7 @@ export default function App() {
           loopStart={loopStart}
           loopEnd={loopEnd}
           hasLoop={hasLoop}
-          trackSteps={scoreTrackSteps}
+          trackSteps={midiStepMap}
           onGridTimeAction={handleGridTimeAction}
           onSeek={seekToBarTime}
           countInActive={countInActive}

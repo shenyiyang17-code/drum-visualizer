@@ -114,6 +114,7 @@ export default function ScoreView({
   const scoreAreaHeight = BAR_LABEL_HEIGHT + HEADER_HEIGHT + TRACKS.length * ROW_HEIGHT;
   const visibleStartTime = pageStartBar * secondsPerBar;
   const visibleEndTime = visibleStartTime + VISIBLE_BAR_COUNT * secondsPerBar;
+  const hasMidiDebugEvents = (midiDebugEvents?.length ?? 0) > 0;
   const visibleMidiDebugEvents = (midiDebugEvents ?? []).filter(
     (event) => event.time >= visibleStartTime && event.time < visibleEndTime
   );
@@ -416,7 +417,7 @@ export default function ScoreView({
                           background: isCurrent ? "rgba(59,130,246,0.2)" : "#0f1722",
                         }}
                       >
-                        {isActive && (
+                        {isActive && !hasMidiDebugEvents && (
                           <div
                             style={{
                               position: "absolute",
