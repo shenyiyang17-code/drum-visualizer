@@ -471,9 +471,32 @@ export default function ScoreView({
                     );
                   })}
 
-                  {visibleMidiDebugEvents
-                    .filter((event) => event.instrument === track)
-                    .map((event, index) => {
+                  {(() => {
+                    let trackEvents = visibleMidiDebugEvents.filter(
+                      (event) => event.instrument === track
+                    );
+
+                    // Deduplicate HH: when multiple notes land on the same grid
+                    // step, keep only the highest-priority articulation so a
+                    // single symbol renders (pedal > open > default).
+                    if (track === "HH") {
+                      const hhPriority: Record<string, number> = { pedal: 2, open: 1 };
+                      const byStep = new Map<number, MidiDebugEvent>();
+                      for (const ev of trackEvents) {
+                        const key = Math.round(ev.time / stepDuration);
+                        const prev = byStep.get(key);
+                        if (
+                          !prev ||
+                          (hhPriority[ev.articulation] ?? 0) >
+                            (hhPriority[prev.articulation] ?? 0)
+                        ) {
+                          byStep.set(key, ev);
+                        }
+                      }
+                      trackEvents = Array.from(byStep.values());
+                    }
+
+                    return trackEvents.map((event, index) => {
                       const left =
                         ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
                         visibleWidth;
@@ -507,7 +530,8 @@ export default function ScoreView({
                           {midiDebugSymbol}
                         </div>
                       );
-                    })}
+                    });
+                  })()}
                 </div>
               </div>
             );
