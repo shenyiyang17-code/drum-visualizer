@@ -19,6 +19,7 @@ type MappedDrumInfo = {
 
 type V3TempDrumEvent = {
   time: number;
+  stepIndex: number;
   instrument: BasicDrumInstrument | "UNMAPPED";
   articulation: MappedDrumInfo["articulation"] | "unknown";
   velocity: number;
@@ -347,6 +348,7 @@ export default function App() {
 
           return {
             time: note.time,
+            stepIndex: Math.round(note.time / stepDuration),
             instrument: mapped?.instrument ?? "UNMAPPED",
             articulation: mapped?.articulation ?? "unknown",
             velocity: note.velocity,
@@ -354,6 +356,7 @@ export default function App() {
         });
 
         setMidiDrumEvents(normalizedV3DrumEvents);
+        console.log("[MIDI V3] quantized sample", normalizedV3DrumEvents.slice(0, 20));
 
         const first20MappedDrumEvents = normalizedV3DrumEvents.slice(0, 20);
 
