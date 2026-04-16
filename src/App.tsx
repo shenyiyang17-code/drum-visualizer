@@ -283,6 +283,7 @@ export default function App() {
   const [metronomeEnabled, setMetronomeEnabled] = useState(false);
   const [metronomeVolume, setMetronomeVolume] = useState(0.9);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [viewMode, setViewMode] = useState<"raw" | "practice">("practice");
   const [midiDrumEvents, setMidiDrumEvents] = useState<V3TempDrumEvent[]>([]);
   // V3 locked: score-language layer only
   const notesByStep = useMemo<V3StepNoteGroup[]>(() => {
@@ -379,12 +380,14 @@ export default function App() {
             const mapped = mapMidiNoteToDrumInfo(note.midi);
             if (!mapped) return null;
 
-            const stepIndex = Math.round(note.time / stepDuration);
-            const beatIndex = Math.floor(stepIndex / stepsPerBeat);
+            const rawStep = note.time / stepDuration;
+            const si = Math.round(rawStep);
+            const quantizedTime = si * stepDuration;
+            const beatIndex = Math.floor(si / stepsPerBeat);
 
             return {
-              time: note.time,
-              stepIndex,
+              time: quantizedTime,
+              stepIndex: si,
               beatIndex,
               barIndex: Math.floor(beatIndex / beatsPerBar),
               instrument: mapped.instrument,
@@ -404,9 +407,77 @@ export default function App() {
           }))
         );
 
-        setMidiDrumEvents(normalizedV3DrumEvents);
+        console.log(
+          "[V4-3] quantized sample",
+          normalizedV3DrumEvents.slice(0, 10).map((e) => ({
+            time: e.time,
+            step: e.stepIndex,
+          }))
+        );
 
-        const instrumentDistribution = normalizedV3DrumEvents.reduce((acc, ev) => {
+        const cleanedEvents: V3TempDrumEvent[] = [];
+        const stepMap = new Map<string, V3TempDrumEvent>();
+
+        for (const e of normalizedV3DrumEvents) {
+          const key = `${e.stepIndex}-${e.instrument}`;
+          const existing = stepMap.get(key);
+
+          if (!existing || e.velocity > existing.velocity) {
+            stepMap.set(key, e);
+          }
+        }
+
+        cleanedEvents.push(...stepMap.values());
+
+        const grooveCoreSteps = new Set<number>();
+
+        for (const e of cleanedEvents) {
+          if (e.instrument === "BD" || e.instrument === "SD") {
+            grooveCoreSteps.add(e.stepIndex);
+          }
+        }
+
+        console.log("[V4-5] groove core steps", Array.from(grooveCoreSteps).slice(0, 20));
+
+        console.log(
+          "[V4-4] cleaned count",
+          cleanedEvents.length,
+          "raw",
+          normalizedV3DrumEvents.length
+        );
+
+        const simplifiedEvents: V3TempDrumEvent[] = [];
+
+        for (const e of cleanedEvents) {
+          if (e.instrument === "BD" || e.instrument === "SD") {
+            simplifiedEvents.push(e);
+            continue;
+          }
+
+          if (e.instrument === "HH") {
+            if (e.stepIndex % stepsPerBeat === 0) {
+              simplifiedEvents.push(e);
+            }
+            continue;
+          }
+
+          simplifiedEvents.push(e);
+        }
+
+        console.log(
+          "[V4-6] simplified count",
+          simplifiedEvents.length,
+          "from",
+          cleanedEvents.length
+        );
+
+        const finalEvents = viewMode === "raw" ? cleanedEvents : simplifiedEvents;
+
+        console.log("[V4-7] mode", viewMode, "events", finalEvents.length);
+
+        setMidiDrumEvents(finalEvents);
+
+        const instrumentDistribution = finalEvents.reduce((acc, ev) => {
           acc[ev.instrument] = (acc[ev.instrument] ?? 0) + 1;
           return acc;
         }, Object.fromEntries(V3_ALLOWED_INSTRUMENTS.map((instrument) => [instrument, 0])) as Record<
@@ -414,7 +485,7 @@ export default function App() {
           number
         >);
 
-        console.log("[MIDI V3] events count", normalizedV3DrumEvents.length);
+        console.log("[MIDI V3] events count", finalEvents.length);
         console.log("[MIDI V3] instrument distribution", instrumentDistribution);
         console.log("[MIDI V3] V3 locked");
       } catch (error) {
@@ -427,7 +498,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [beatsPerBar, stepDuration, stepsPerBeat, viewMode]);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const metronomeGainRef = useRef<GainNode | null>(null);
@@ -1730,6 +1801,28 @@ export default function App() {
               </div>
               <button onClick={increasePlaybackSpeed} style={buttonStyle(false)}>
                 +0.1
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setViewMode("raw")}
+                style={{
+                  ...buttonStyle(viewMode === "raw"),
+                  padding: 8,
+                }}
+              >
+                原始
+              </button>
+
+              <button
+                onClick={() => setViewMode("practice")}
+                style={{
+                  ...buttonStyle(viewMode === "practice"),
+                  padding: 8,
+                }}
+              >
+                练习
               </button>
             </div>
           </div>
