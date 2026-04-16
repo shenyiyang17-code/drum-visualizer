@@ -286,6 +286,7 @@ export default function App() {
   const [metronomeVolume, setMetronomeVolume] = useState(0.9);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [midiDrumEvents, setMidiDrumEvents] = useState<V3TempDrumEvent[]>([]);
+  const [activeCymbal, setActiveCymbal] = useState<"HH" | "RD">("HH");
 
   const midiStepMap = useMemo(() => {
     const map: Record<TrackName, Set<number>> = {
@@ -364,6 +365,11 @@ export default function App() {
           return acc;
         }, {} as Record<string, number>);
         console.log("[MIDI V3] instrument counts", instrumentCounts);
+
+        const detectedCymbal: "HH" | "RD" =
+          (instrumentCounts["RD"] ?? 0) > (instrumentCounts["HH"] ?? 0) ? "RD" : "HH";
+        setActiveCymbal(detectedCymbal);
+        console.log("[MIDI V3] active cymbal", detectedCymbal);
 
         // --- V3 step 20: validate CR / RD events ---
         const crEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "CR");
@@ -1821,6 +1827,7 @@ export default function App() {
           onSetLoopEnd={setLoopEndAt}
           snapTime={snapTime}
           onMiniMapSeek={seekToSnapped}
+          activeCymbal={activeCymbal}
         />
       </div>
     </div>

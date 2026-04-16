@@ -31,6 +31,7 @@ type Props = {
   onSetLoopEnd?: (time: number) => void;
   snapTime?: (time: number) => number;
   onMiniMapSeek?: (time: number) => void;
+  activeCymbal?: "HH" | "RD";
 };
 
 const TRACKS: TrackName[] = ["HH", "SD", "BD"];
@@ -57,6 +58,7 @@ export default function ScoreView({
   metronomeActive = false,
   metronomeBeat = 1,
   midiDebugEvents,
+  activeCymbal = "HH",
 }: Props) {
   console.log("[V3] ScoreView midiDebugEvents", midiDebugEvents);
 
@@ -466,7 +468,7 @@ export default function ScoreView({
                             left,
                             top: "50%",
                             transform: "translate(-50%, -50%)",
-                            opacity: 0.95,
+                            opacity: lane === "RD" && activeCymbal !== "RD" ? 0.15 : 0.95,
                             pointerEvents: "none",
                             zIndex: 4,
                             color: "#f59e0b",
@@ -645,6 +647,8 @@ export default function ScoreView({
                       const left =
                         ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
                         visibleWidth;
+                      const isDeemphasized =
+                        track === "HH" && activeCymbal === "RD";
                       const midiDebugSymbol =
                         track === "HH"
                           ? event.articulation === "pedal"
@@ -662,7 +666,7 @@ export default function ScoreView({
                             left,
                             top: "50%",
                             transform: "translate(-50%, -50%)",
-                            opacity: 0.95,
+                            opacity: isDeemphasized ? 0.15 : 0.95,
                             pointerEvents: "none",
                             zIndex: 4,
                             color: "#f59e0b",
