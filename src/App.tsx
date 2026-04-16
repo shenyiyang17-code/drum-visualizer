@@ -2,6 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Midi } from "@tonejs/midi";
 import ScoreView from "./components/ScoreView";
 import drumDataRaw from "./drum_events.json";
+import {
+  V3_ALLOWED_INSTRUMENTS,
+  type BasicDrumInstrument,
+  type V3DrumArticulation,
+  type V3StepNoteGroup,
+  type V3TempDrumEvent,
+} from "./types/v3Drum";
 
 type TrackName = "HH" | "SD" | "BD";
 
@@ -10,21 +17,9 @@ type DrumEvent = {
   track: TrackName;
 };
 
-type BasicDrumInstrument = "BD" | "SD" | "HH" | "CR" | "RD" | "TM_HIGH" | "TM_MID" | "TM_FLOOR";
-
 type MappedDrumInfo = {
   instrument: BasicDrumInstrument;
-  articulation: "normal" | "closed" | "pedal" | "open";
-};
-
-type V3TempDrumEvent = {
-  time: number;
-  stepIndex: number;
-  beatIndex: number;
-  barIndex: number;
-  instrument: BasicDrumInstrument | "UNMAPPED";
-  articulation: MappedDrumInfo["articulation"] | "unknown";
-  velocity: number;
+  articulation: Exclude<V3DrumArticulation, "ghost">;
 };
 
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
@@ -289,7 +284,28 @@ export default function App() {
   const [metronomeVolume, setMetronomeVolume] = useState(0.9);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [midiDrumEvents, setMidiDrumEvents] = useState<V3TempDrumEvent[]>([]);
-  const [activeCymbal, setActiveCymbal] = useState<"HH" | "RD">("HH");
+  // V3 locked: score-language layer only
+  const notesByStep = useMemo<V3StepNoteGroup[]>(() => {
+    const grouped = new Map<number, V3TempDrumEvent[]>();
+
+    for (const note of midiDrumEvents) {
+      const stepNotes = grouped.get(note.stepIndex);
+      if (stepNotes) {
+        stepNotes.push(note);
+      } else {
+        grouped.set(note.stepIndex, [note]);
+      }
+    }
+
+    return Array.from(grouped.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([stepIndex, notes]) => ({
+        stepIndex,
+        notes,
+      }));
+  }, [midiDrumEvents]);
+
+  console.log("[MIDI V3] notesByStep", notesByStep);
 
   const midiStepMap = useMemo(() => {
     const map: Record<TrackName, Set<number>> = {
@@ -316,16 +332,15 @@ export default function App() {
   }, [midiDrumEvents, stepDuration, totalSteps]);
 
   useEffect(() => {
-    console.log("[MIDI V3] midiStepMap", midiStepMap);
-  }, [midiStepMap]);
-
-  useEffect(() => {
     let cancelled = false;
 
     const loadMidiPreview = async () => {
+      console.log("[V4] loadMidiPreview START");
+
       try {
-        const response = await fetch(encodeURI("/midi/080 Half-Time Pop Ride.mid"));
+        const response = await fetch("/midi/080 Half-Time Pop Ride.mid");
         if (!response.ok) {
+          console.error("[V4] fetch failed", response.status);
           throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
         }
 
@@ -333,114 +348,75 @@ export default function App() {
         if (cancelled) return;
 
         const midi = new Midi(midiBuffer);
-        const firstTrack = midi.tracks[0];
+        console.log("[V4] MIDI loaded", midi);
 
-        if (!firstTrack) {
-          console.log("[MIDI V3] No tracks found in /midi/080 Half-Time Pop Ride.mid");
+        const midiBpm = midi.header.tempos[0]?.bpm;
+        const allNotes = midi.tracks.flatMap((t) => t.notes);
+
+        allNotes.sort((a, b) => a.time - b.time);
+
+        console.log("[V4] bpm", midi.header.tempos);
+        console.log("[V4] total notes", allNotes.length);
+        console.log(
+          "[V4] first 5 notes",
+          allNotes.slice(0, 5).map((n) => ({
+            time: n.time,
+            midi: n.midi,
+            velocity: n.velocity,
+          }))
+        );
+
+        if (midiBpm !== undefined) {
+          console.log("[V4] primary bpm", midiBpm);
+        }
+
+        if (allNotes.length === 0) {
           return;
         }
 
-        const first20Notes = firstTrack.notes.slice(0, 20).map((note) => ({
-          time: note.time,
-          midi: note.midi,
-        }));
+        const normalizedV3DrumEvents: V3TempDrumEvent[] = allNotes
+          .map((note) => {
+            const mapped = mapMidiNoteToDrumInfo(note.midi);
+            if (!mapped) return null;
 
-        const normalizedV3DrumEvents: V3TempDrumEvent[] = firstTrack.notes.map((note) => {
-          const mapped = mapMidiNoteToDrumInfo(note.midi);
-          const si = Math.round(note.time / stepDuration);
-          const bi = Math.floor(si / stepsPerBeat);
+            const stepIndex = Math.round(note.time / stepDuration);
+            const beatIndex = Math.floor(stepIndex / stepsPerBeat);
 
-          return {
-            time: note.time,
-            stepIndex: si,
-            beatIndex: bi,
-            barIndex: Math.floor(bi / beatsPerBar),
-            instrument: mapped?.instrument ?? "UNMAPPED",
-            articulation: mapped?.articulation ?? "unknown",
-            velocity: note.velocity,
-          };
-        });
+            return {
+              time: note.time,
+              stepIndex,
+              beatIndex,
+              barIndex: Math.floor(beatIndex / beatsPerBar),
+              instrument: mapped.instrument,
+              articulation: mapped.articulation,
+              velocity: note.velocity,
+            };
+          })
+          .filter(Boolean) as V3TempDrumEvent[];
+
+        console.log("[V4-2] mapped events", normalizedV3DrumEvents.length);
+        console.log(
+          "[V4-2] sample",
+          normalizedV3DrumEvents.slice(0, 10).map((e) => ({
+            instrument: e.instrument,
+            articulation: e.articulation,
+            velocity: e.velocity,
+          }))
+        );
 
         setMidiDrumEvents(normalizedV3DrumEvents);
-        console.log("[MIDI V3] quantized sample", normalizedV3DrumEvents.slice(0, 20));
-        console.log("[MIDI V3] bar/beat sample", normalizedV3DrumEvents.slice(0, 20));
 
-        const first20MappedDrumEvents = normalizedV3DrumEvents.slice(0, 20);
-
-        console.log("[MIDI V3] First-track first 20 notes", first20Notes);
-        console.log("[MIDI V3] First-track first 20 mapped drum events", first20MappedDrumEvents);
-
-        const instrumentCounts = normalizedV3DrumEvents.reduce((acc, ev) => {
-          acc[ev.instrument] = (acc[ev.instrument] || 0) + 1;
+        const instrumentDistribution = normalizedV3DrumEvents.reduce((acc, ev) => {
+          acc[ev.instrument] = (acc[ev.instrument] ?? 0) + 1;
           return acc;
-        }, {} as Record<string, number>);
-        console.log("[MIDI V3] instrument counts", instrumentCounts);
+        }, Object.fromEntries(V3_ALLOWED_INSTRUMENTS.map((instrument) => [instrument, 0])) as Record<
+          BasicDrumInstrument,
+          number
+        >);
 
-        const detectedCymbal: "HH" | "RD" =
-          (instrumentCounts["RD"] ?? 0) > (instrumentCounts["HH"] ?? 0) ? "RD" : "HH";
-        setActiveCymbal(detectedCymbal);
-        console.log("[MIDI V3] active cymbal", detectedCymbal);
-
-        // --- V3 step 20: validate CR / RD events ---
-        const crEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "CR");
-        const rdEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "RD");
-
-        const densityMetric = (events: V3TempDrumEvent[], label: string) => {
-          if (events.length < 2) return 0;
-          const span = events[events.length - 1].time - events[0].time;
-          const density = span > 0 ? events.length / span : 0;
-          console.log(
-            `[MIDI V3] ${label}: ${events.length} events, span ${span.toFixed(1)}s, density ${density.toFixed(2)} events/s`
-          );
-          return density;
-        };
-
-        const crDensity = densityMetric(crEvents, "CR (crash)");
-        densityMetric(rdEvents, "RD (ride)");
-
-        // Warn if CR density looks too high (crashes should be sparse)
-        if (crDensity > 2) {
-          console.warn(
-            `[MIDI V3] CR density ${crDensity.toFixed(2)} events/s is unusually high — some events may be misclassified`
-          );
-        }
-
-        // Check for CR bursts: >3 crashes within any 2-second window
-        for (let i = 0; i < crEvents.length; i++) {
-          const windowEnd = crEvents[i].time + 2;
-          let count = 0;
-          for (let j = i; j < crEvents.length && crEvents[j].time <= windowEnd; j++) {
-            count++;
-          }
-          if (count > 3) {
-            console.warn(
-              `[MIDI V3] CR burst: ${count} crashes within 2s starting at ${crEvents[i].time.toFixed(2)}s — likely misclassified`
-            );
-            break;
-          }
-        }
-
-        // --- V3 step 21: detect HH vs RD overlaps ---
-        const hhEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "HH");
-        const overlapThreshold = 0.02;
-        const overlaps: Array<{ time: number; hh: V3TempDrumEvent; rd: V3TempDrumEvent }> = [];
-        let rdIdx = 0;
-        for (const hh of hhEvents) {
-          while (rdIdx < rdEvents.length && rdEvents[rdIdx].time < hh.time - overlapThreshold) {
-            rdIdx++;
-          }
-          for (
-            let j = rdIdx;
-            j < rdEvents.length && rdEvents[j].time <= hh.time + overlapThreshold;
-            j++
-          ) {
-            overlaps.push({ time: hh.time, hh, rd: rdEvents[j] });
-          }
-        }
-        console.log("[MIDI V3] HH/RD overlap count", overlaps.length);
-        if (overlaps.length > 0) {
-          console.log("[MIDI V3] HH/RD overlap sample", overlaps.slice(0, 5));
-        }
+        console.log("[MIDI V3] events count", normalizedV3DrumEvents.length);
+        console.log("[MIDI V3] instrument distribution", instrumentDistribution);
+        console.log("[MIDI V3] V3 locked");
       } catch (error) {
         console.error("[MIDI V3] Failed to load or parse MIDI", error);
       }
@@ -633,10 +609,10 @@ export default function App() {
         setCountInActive(false);
         setCountInBeat(1);
 
-        console.log("play() called -- attempting audio.play()", { src: audio.src });
+        // console.log("play() called -- attempting audio.play()", { src: audio.src });
         try {
           await audio.play();
-          console.log("play() succeeded");
+          // console.log("play() succeeded");
           setIsPlaying(true);
         } catch (err) {
           console.error("audio play failed:", err);
@@ -646,10 +622,10 @@ export default function App() {
       return;
     }
 
-    console.log("play() called -- attempting audio.play()", { src: audio.src });
+    // console.log("play() called -- attempting audio.play()", { src: audio.src });
     try {
       await audio.play();
-      console.log("play() succeeded");
+      // console.log("play() succeeded");
       setIsPlaying(true);
     } catch (err) {
       console.error("audio play failed:", err);
@@ -663,9 +639,9 @@ export default function App() {
     resetMetronomeTracking();
     setCountInActive(false);
     setCountInBeat(1);
-    console.log("pause() called");
+    // console.log("pause() called");
     audio.pause();
-    console.log("pause() executed");
+    // console.log("pause() executed");
     setIsPlaying(false);
   }, [clearCountInTimers, resetMetronomeTracking]);
 
@@ -1051,7 +1027,7 @@ export default function App() {
       if (Number.isFinite(audio.duration)) {
         setAudioDuration(audio.duration);
       }
-      console.log("audio loadedmetadata", { duration: audio.duration, src: audio.src });
+      // console.log("audio loadedmetadata", { duration: audio.duration, src: audio.src });
     };
 
     const onCanPlay = () => {
@@ -1060,7 +1036,7 @@ export default function App() {
       if (!trackSwitchInProgressRef.current) {
         syncPlaybackPosition(audio.currentTime);
       }
-      console.log("audio canplay", { src: audio.src });
+      // console.log("audio canplay", { src: audio.src });
     };
 
     const onError = (ev: any) => {
@@ -1816,7 +1792,7 @@ export default function App() {
         </div>
 
         <ScoreViewWithMidiDebug
-          midiDebugEvents={midiDrumEvents}
+          notesByStep={notesByStep}
           duration={duration}
           bpm={bpm}
           beatsPerBar={beatsPerBar}
@@ -1837,7 +1813,6 @@ export default function App() {
           onSetLoopEnd={setLoopEndAt}
           snapTime={snapTime}
           onMiniMapSeek={seekToSnapped}
-          activeCymbal={activeCymbal}
         />
       </div>
     </div>

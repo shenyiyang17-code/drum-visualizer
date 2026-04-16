@@ -1,15 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { V3StepNoteGroup } from "../types/v3Drum";
 
 type TrackName = "HH" | "SD" | "BD";
-
-type MidiDebugEvent = {
-  time: number;
-  stepIndex: number;
-  barIndex: number;
-  instrument: string;
-  articulation: string;
-  velocity: number;
-};
 
 type Props = {
   duration: number;
@@ -28,12 +20,11 @@ type Props = {
   countInBeat?: number;
   metronomeActive?: boolean;
   metronomeBeat?: number;
-  midiDebugEvents?: MidiDebugEvent[];
+  notesByStep?: V3StepNoteGroup[];
   onSetLoopStart?: (time: number) => void;
   onSetLoopEnd?: (time: number) => void;
   snapTime?: (time: number) => number;
   onMiniMapSeek?: (time: number) => void;
-  activeCymbal?: "HH" | "RD";
 };
 
 const TRACKS: TrackName[] = ["HH", "SD", "BD"];
@@ -59,11 +50,8 @@ export default function ScoreView({
   countInBeat = 1,
   metronomeActive = false,
   metronomeBeat = 1,
-  midiDebugEvents,
-  activeCymbal = "HH",
+  notesByStep = [],
 }: Props) {
-  console.log("[V3] ScoreView midiDebugEvents", midiDebugEvents);
-
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageStartBarOverride, setPageStartBarOverride] = useState<number | null>(null);
@@ -118,11 +106,17 @@ export default function ScoreView({
   const scoreContentOpacity = countInActive ? 0.72 : 1;
   const totalLaneCount = MIDI_ONLY_LANES.length + TRACKS.length;
   const scoreAreaHeight = BAR_LABEL_HEIGHT + HEADER_HEIGHT + totalLaneCount * ROW_HEIGHT;
-  const visibleStartTime = pageStartBar * secondsPerBar;
-  const visibleEndTime = visibleStartTime + VISIBLE_BAR_COUNT * secondsPerBar;
-  const hasMidiDebugEvents = (midiDebugEvents?.length ?? 0) > 0;
-  const visibleMidiDebugEvents = (midiDebugEvents ?? []).filter(
-    (event) => event.stepIndex >= pageStartStep && event.stepIndex < pageStartStep + visibleStepCount
+  const hasMidiDebugEvents = notesByStep.length > 0;
+  const visibleNotesByStep = useMemo(
+    () =>
+      notesByStep.filter(
+        (group) => group.stepIndex >= pageStartStep && group.stepIndex < pageStartStep + visibleStepCount
+      ),
+    [notesByStep, pageStartStep, visibleStepCount]
+  );
+  const visibleNotesByStepMap = useMemo(
+    () => new Map(visibleNotesByStep.map((group) => [group.stepIndex, group.notes])),
+    [visibleNotesByStep]
   );
 
   useEffect(() => {
@@ -404,6 +398,8 @@ export default function ScoreView({
                   {Array.from({ length: visibleStepCount }).map((_, relativeStep) => {
                     const step = pageStartStep + relativeStep;
                     const isCurrent = step === currentStep;
+                    const stepNotes = visibleNotesByStepMap.get(step) ?? [];
+                    const laneNotes = stepNotes.filter((event) => event.instrument === lane);
 
                     return (
                       <div
@@ -415,7 +411,36 @@ export default function ScoreView({
                           height: "100%",
                           background: isCurrent ? "rgba(59,130,246,0.2)" : "#0f1722",
                         }}
-                      />
+                      >
+                        {laneNotes.map((event, index) => {
+                          const isTom =
+                            lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR";
+                          const symbol = isTom ? "●" : "x";
+                          const xOffset = (index - (laneNotes.length - 1) / 2) * 6;
+
+                          return (
+                            <div
+                              key={`midi-${lane}-${event.stepIndex}-${index}`}
+                              style={{
+                                position: "absolute",
+                                left: `calc(50% + ${xOffset}px)`,
+                                top: "50%",
+                                transform: "translate(-50%, -50%)",
+                                opacity: 0.95,
+                                pointerEvents: "none",
+                                zIndex: 4,
+                                color: "#f59e0b",
+                                fontSize: 16,
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                              }}
+                            >
+                              {symbol}
+                            </div>
+                          );
+                        })}
+                      </div>
                     );
                   })}
 
@@ -452,60 +477,6 @@ export default function ScoreView({
                     );
                   })}
 
-                  {/* MIDI events */}
-                  {Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barOffset) => {
-                    const barIndex = pageStartBar + barOffset;
-                    const barEvents = visibleMidiDebugEvents.filter(
-                      (event) => event.instrument === lane && event.barIndex === barIndex
-                    );
-
-                    if (barEvents.length === 0) return null;
-
-                    return (
-                      <div
-                        key={`midi-bar-${lane}-${barIndex}`}
-                        style={{
-                          position: "absolute",
-                          left: barOffset * barWidth,
-                          top: 0,
-                          width: barWidth,
-                          height: "100%",
-                          pointerEvents: "none",
-                          zIndex: 4,
-                        }}
-                      >
-                        {barEvents.map((event, index) => {
-                          const stepInBar = event.stepIndex - event.barIndex * stepsPerBar;
-                          const left = stepInBar * stepWidth + stepWidth / 2;
-                          const isTom =
-                            lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR";
-                          const symbol = isTom ? "●" : "x";
-
-                          return (
-                            <div
-                              key={`midi-${lane}-${event.stepIndex}-${index}`}
-                              style={{
-                                position: "absolute",
-                                left,
-                                top: "50%",
-                                transform: "translate(-50%, -50%)",
-                                opacity: lane === "RD" && activeCymbal !== "RD" ? 0.15 : 0.95,
-                                pointerEvents: "none",
-                                zIndex: 4,
-                                color: "#f59e0b",
-                                fontSize: 16,
-                                fontWeight: 700,
-                                lineHeight: 1,
-                                textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
-                              }}
-                            >
-                              {symbol}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             );
@@ -572,6 +543,8 @@ export default function ScoreView({
                     const isActive = activeSteps.has(step);
                     const isCurrent = step === currentStep;
                     const isInPreview = step >= previewBarStartStep;
+                    const stepNotes = visibleNotesByStepMap.get(step) ?? [];
+                    const trackNotes = stepNotes.filter((event) => event.instrument === track);
 
                     return (
                       <div
@@ -588,6 +561,40 @@ export default function ScoreView({
                           background: isCurrent ? "rgba(59,130,246,0.2)" : "#0f1722",
                         }}
                       >
+                        {hasMidiDebugEvents &&
+                          trackNotes.map((event, index) => {
+                            const xOffset = (index - (trackNotes.length - 1) / 2) * 6;
+                            const midiDebugSymbol =
+                              track === "HH"
+                                ? event.articulation === "pedal"
+                                  ? "+"
+                                  : event.articulation === "open"
+                                    ? "o"
+                                    : "x"
+                                : "●";
+
+                            return (
+                              <div
+                                key={`midi-debug-${track}-${event.stepIndex}-${index}`}
+                                style={{
+                                  position: "absolute",
+                                  left: `calc(50% + ${xOffset}px)`,
+                                  top: "50%",
+                                  transform: "translate(-50%, -50%)",
+                                  opacity: 0.95,
+                                  pointerEvents: "none",
+                                  zIndex: 4,
+                                  color: "#f59e0b",
+                                  fontSize: 16,
+                                  fontWeight: 700,
+                                  lineHeight: 1,
+                                  textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                                }}
+                              >
+                                {midiDebugSymbol}
+                              </div>
+                            );
+                          })}
                         {isActive && !hasMidiDebugEvents && (
                           <div
                             style={{
@@ -642,89 +649,6 @@ export default function ScoreView({
                     );
                   })}
 
-                  {(() => {
-                    let trackEvents = visibleMidiDebugEvents.filter(
-                      (event) => event.instrument === track
-                    );
-
-                    // Deduplicate HH: when multiple notes land on the same grid
-                    // step, keep only the highest-priority articulation so a
-                    // single symbol renders (pedal > open > default).
-                    if (track === "HH") {
-                      const hhPriority: Record<string, number> = { pedal: 2, open: 1 };
-                      const byStep = new Map<number, MidiDebugEvent>();
-                      for (const ev of trackEvents) {
-                        const key = ev.stepIndex;
-                        const prev = byStep.get(key);
-                        if (
-                          !prev ||
-                          (hhPriority[ev.articulation] ?? 0) >
-                            (hhPriority[prev.articulation] ?? 0)
-                        ) {
-                          byStep.set(key, ev);
-                        }
-                      }
-                      trackEvents = Array.from(byStep.values());
-                    }
-
-                    return Array.from({ length: VISIBLE_BAR_COUNT }).map((_, barOffset) => {
-                      const barIndex = pageStartBar + barOffset;
-                      const barEvents = trackEvents.filter((event) => event.barIndex === barIndex);
-
-                      if (barEvents.length === 0) return null;
-
-                      return (
-                        <div
-                          key={`midi-debug-bar-${track}-${barIndex}`}
-                          style={{
-                            position: "absolute",
-                            left: barOffset * barWidth,
-                            top: 0,
-                            width: barWidth,
-                            height: "100%",
-                            pointerEvents: "none",
-                            zIndex: 4,
-                          }}
-                        >
-                          {barEvents.map((event, index) => {
-                            const stepInBar = event.stepIndex - event.barIndex * stepsPerBar;
-                            const left = stepInBar * stepWidth + stepWidth / 2;
-                            const isDeemphasized = track === "HH" && activeCymbal === "RD";
-                            const midiDebugSymbol =
-                              track === "HH"
-                                ? event.articulation === "pedal"
-                                  ? "+"
-                                  : event.articulation === "open"
-                                    ? "o"
-                                    : "x"
-                                : "●";
-
-                            return (
-                              <div
-                                key={`midi-debug-${track}-${event.stepIndex}-${index}`}
-                                style={{
-                                  position: "absolute",
-                                  left,
-                                  top: "50%",
-                                  transform: "translate(-50%, -50%)",
-                                  opacity: isDeemphasized ? 0.15 : 0.95,
-                                  pointerEvents: "none",
-                                  zIndex: 4,
-                                  color: "#f59e0b",
-                                  fontSize: 16,
-                                  fontWeight: 700,
-                                  lineHeight: 1,
-                                  textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
-                                }}
-                              >
-                                {midiDebugSymbol}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    });
-                  })()}
                 </div>
               </div>
             );

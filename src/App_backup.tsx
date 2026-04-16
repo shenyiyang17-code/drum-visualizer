@@ -1,4 +1,4 @@
-console.log("App loaded - current file");
+// console.log("App loaded - current file");
 import { useEffect, useMemo, useRef, useState } from "react";
 import ScoreView from "./components/ScoreView";
 
