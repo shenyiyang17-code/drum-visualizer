@@ -10,7 +10,7 @@ type DrumEvent = {
   track: TrackName;
 };
 
-type BasicDrumInstrument = "BD" | "SD" | "HH" | "CR" | "RD";
+type BasicDrumInstrument = "BD" | "SD" | "HH" | "CR" | "RD" | "TM_HIGH" | "TM_MID" | "TM_FLOOR";
 
 type MappedDrumInfo = {
   instrument: BasicDrumInstrument;
@@ -214,6 +214,9 @@ function mapMidiNoteToDrumInfo(midiNote: number): MappedDrumInfo | null {
   if (midiNote === 46) return { instrument: "HH", articulation: "open" };
   if (midiNote === 49) return { instrument: "CR", articulation: "normal" };
   if (midiNote === 51) return { instrument: "RD", articulation: "normal" };
+  if (midiNote === 48 || midiNote === 50) return { instrument: "TM_HIGH", articulation: "normal" };
+  if (midiNote === 45 || midiNote === 47) return { instrument: "TM_MID", articulation: "normal" };
+  if (midiNote === 41 || midiNote === 43) return { instrument: "TM_FLOOR", articulation: "normal" };
   return null;
 }
 
@@ -355,6 +358,51 @@ export default function App() {
 
         console.log("[MIDI V3] First-track first 20 notes", first20Notes);
         console.log("[MIDI V3] First-track first 20 mapped drum events", first20MappedDrumEvents);
+
+        const instrumentCounts = normalizedV3DrumEvents.reduce((acc, ev) => {
+          acc[ev.instrument] = (acc[ev.instrument] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log("[MIDI V3] instrument counts", instrumentCounts);
+
+        // --- V3 step 20: validate CR / RD events ---
+        const crEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "CR");
+        const rdEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "RD");
+
+        const densityMetric = (events: V3TempDrumEvent[], label: string) => {
+          if (events.length < 2) return 0;
+          const span = events[events.length - 1].time - events[0].time;
+          const density = span > 0 ? events.length / span : 0;
+          console.log(
+            `[MIDI V3] ${label}: ${events.length} events, span ${span.toFixed(1)}s, density ${density.toFixed(2)} events/s`
+          );
+          return density;
+        };
+
+        const crDensity = densityMetric(crEvents, "CR (crash)");
+        densityMetric(rdEvents, "RD (ride)");
+
+        // Warn if CR density looks too high (crashes should be sparse)
+        if (crDensity > 2) {
+          console.warn(
+            `[MIDI V3] CR density ${crDensity.toFixed(2)} events/s is unusually high — some events may be misclassified`
+          );
+        }
+
+        // Check for CR bursts: >3 crashes within any 2-second window
+        for (let i = 0; i < crEvents.length; i++) {
+          const windowEnd = crEvents[i].time + 2;
+          let count = 0;
+          for (let j = i; j < crEvents.length && crEvents[j].time <= windowEnd; j++) {
+            count++;
+          }
+          if (count > 3) {
+            console.warn(
+              `[MIDI V3] CR burst: ${count} crashes within 2s starting at ${crEvents[i].time.toFixed(2)}s — likely misclassified`
+            );
+            break;
+          }
+        }
       } catch (error) {
         console.error("[MIDI V3] Failed to load or parse MIDI", error);
       }

@@ -34,7 +34,7 @@ type Props = {
 };
 
 const TRACKS: TrackName[] = ["HH", "SD", "BD"];
-const MIDI_ONLY_LANES = ["CR", "RD"] as const;
+const MIDI_ONLY_LANES = ["CR", "RD", "TM_HIGH", "TM_MID", "TM_FLOOR"] as const;
 
 const LEFT_GUTTER = 72;
 const STEP_WIDTH = 28;
@@ -448,13 +448,15 @@ export default function ScoreView({
                     );
                   })}
 
-                  {/* MIDI events — cymbal-style "x" */}
+                  {/* MIDI events */}
                   {visibleMidiDebugEvents
                     .filter((event) => event.instrument === lane)
                     .map((event, index) => {
                       const left =
                         ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
                         visibleWidth;
+                      const isTom = lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR";
+                      const symbol = isTom ? "●" : "x";
 
                       return (
                         <div
@@ -474,7 +476,7 @@ export default function ScoreView({
                             textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
                           }}
                         >
-                          x
+                          {symbol}
                         </div>
                       );
                     })}
