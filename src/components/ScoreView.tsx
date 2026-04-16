@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 type TrackName = "HH" | "SD" | "BD";
 
+type MidiDebugEvent = {
+  time: number;
+  instrument: string;
+  articulation: string;
+  velocity: number;
+};
+
 type Props = {
   duration: number;
   bpm: number;
@@ -19,6 +26,7 @@ type Props = {
   countInBeat?: number;
   metronomeActive?: boolean;
   metronomeBeat?: number;
+  midiDebugEvents?: MidiDebugEvent[];
   onSetLoopStart?: (time: number) => void;
   onSetLoopEnd?: (time: number) => void;
   snapTime?: (time: number) => number;
@@ -47,7 +55,10 @@ export default function ScoreView({
   countInBeat = 1,
   metronomeActive = false,
   metronomeBeat = 1,
+  midiDebugEvents,
 }: Props) {
+  console.log("[V3] ScoreView midiDebugEvents", midiDebugEvents);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [pageStartBarOverride, setPageStartBarOverride] = useState<number | null>(null);
@@ -101,6 +112,11 @@ export default function ScoreView({
   const visibleWidth = barWidth * VISIBLE_BAR_COUNT;
   const scoreContentOpacity = countInActive ? 0.72 : 1;
   const scoreAreaHeight = BAR_LABEL_HEIGHT + HEADER_HEIGHT + TRACKS.length * ROW_HEIGHT;
+  const visibleStartTime = pageStartBar * secondsPerBar;
+  const visibleEndTime = visibleStartTime + VISIBLE_BAR_COUNT * secondsPerBar;
+  const visibleMidiDebugEvents = (midiDebugEvents ?? []).filter(
+    (event) => event.time >= visibleStartTime && event.time < visibleEndTime
+  );
 
   useEffect(() => {
     if (pageStartBarOverride === null) return;
@@ -453,6 +469,37 @@ export default function ScoreView({
                       />
                     );
                   })}
+
+                  {visibleMidiDebugEvents
+                    .filter((event) => event.instrument === track)
+                    .map((event, index) => {
+                      const left =
+                        ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
+                        visibleWidth;
+                      const midiDebugSymbol = track === "HH" ? "x" : "●";
+
+                      return (
+                        <div
+                          key={`midi-debug-${track}-${event.time}-${index}`}
+                          style={{
+                            position: "absolute",
+                            left,
+                            top: "50%",
+                            transform: "translate(-50%, -50%)",
+                            opacity: 0.95,
+                            pointerEvents: "none",
+                            zIndex: 4,
+                            color: "#f59e0b",
+                            fontSize: 16,
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                          }}
+                        >
+                          {midiDebugSymbol}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             );

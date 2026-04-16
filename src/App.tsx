@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Midi } from "@tonejs/midi";
 import ScoreView from "./components/ScoreView";
 import drumDataRaw from "./drum_events.json";
 
@@ -7,6 +8,20 @@ type TrackName = "HH" | "SD" | "BD";
 type DrumEvent = {
   time: number;
   track: TrackName;
+};
+
+type BasicDrumInstrument = "BD" | "SD" | "HH" | "CR" | "RD";
+
+type MappedDrumInfo = {
+  instrument: BasicDrumInstrument;
+  articulation: "normal" | "closed" | "pedal" | "open";
+};
+
+type V3TempDrumEvent = {
+  time: number;
+  instrument: BasicDrumInstrument | "UNMAPPED";
+  articulation: MappedDrumInfo["articulation"] | "unknown";
+  velocity: number;
 };
 
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
@@ -191,7 +206,20 @@ function buildStepMap(
   return map;
 }
 
+function mapMidiNoteToDrumInfo(midiNote: number): MappedDrumInfo | null {
+  if (midiNote === 36) return { instrument: "BD", articulation: "normal" };
+  if (midiNote === 38) return { instrument: "SD", articulation: "normal" };
+  if (midiNote === 42) return { instrument: "HH", articulation: "closed" };
+  if (midiNote === 44) return { instrument: "HH", articulation: "pedal" };
+  if (midiNote === 46) return { instrument: "HH", articulation: "open" };
+  if (midiNote === 49) return { instrument: "CR", articulation: "normal" };
+  if (midiNote === 51) return { instrument: "RD", articulation: "normal" };
+  return null;
+}
+
 export default function App() {
+  const ScoreViewWithMidiDebug = ScoreView as any;
+
   const [selectedTrackType, setSelectedTrackType] = useState<TrackTypeId>("original");
 
   const currentTrackType = PRACTICE_CONTENT.trackTypes[selectedTrackType];
@@ -254,6 +282,90 @@ export default function App() {
   const [metronomeEnabled, setMetronomeEnabled] = useState(false);
   const [metronomeVolume, setMetronomeVolume] = useState(0.9);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [midiDrumEvents, setMidiDrumEvents] = useState<V3TempDrumEvent[]>([]);
+
+  const midiStepMap = useMemo(() => {
+    const map: Record<TrackName, Set<number>> = {
+      HH: new Set<number>(),
+      SD: new Set<number>(),
+      BD: new Set<number>(),
+    };
+
+    for (const event of midiDrumEvents) {
+      let track: TrackName | null = null;
+
+      if (event.instrument === "HH") track = "HH";
+      if (event.instrument === "SD") track = "SD";
+      if (event.instrument === "BD") track = "BD";
+      if (!track) continue;
+
+      const step = Math.round(event.time / stepDuration);
+      if (step >= 0 && step < totalSteps) {
+        map[track].add(step);
+      }
+    }
+
+    return map;
+  }, [midiDrumEvents, stepDuration, totalSteps]);
+
+  useEffect(() => {
+    console.log("[MIDI V3] midiStepMap", midiStepMap);
+  }, [midiStepMap]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMidiPreview = async () => {
+      try {
+        const response = await fetch(encodeURI("/midi/080 Half-Time Pop.mid"));
+        if (!response.ok) {
+          throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
+        }
+
+        const midiBuffer = await response.arrayBuffer();
+        if (cancelled) return;
+
+        const midi = new Midi(midiBuffer);
+        const firstTrack = midi.tracks[0];
+
+        if (!firstTrack) {
+          console.log("[MIDI V3] No tracks found in /midi/080 Half-Time Pop.mid");
+          return;
+        }
+
+        const first20Notes = firstTrack.notes.slice(0, 20).map((note) => ({
+          time: note.time,
+          midi: note.midi,
+        }));
+
+        const normalizedV3DrumEvents: V3TempDrumEvent[] = firstTrack.notes.map((note) => {
+          const mapped = mapMidiNoteToDrumInfo(note.midi);
+
+          return {
+            time: note.time,
+            instrument: mapped?.instrument ?? "UNMAPPED",
+            articulation: mapped?.articulation ?? "unknown",
+            velocity: note.velocity,
+          };
+        });
+
+        setMidiDrumEvents(normalizedV3DrumEvents);
+
+        const first20MappedDrumEvents = normalizedV3DrumEvents.slice(0, 20);
+
+        console.log("[MIDI V3] First-track first 20 notes", first20Notes);
+        console.log("[MIDI V3] First-track first 20 mapped drum events", first20MappedDrumEvents);
+      } catch (error) {
+        console.error("[MIDI V3] Failed to load or parse MIDI", error);
+      }
+    };
+
+    void loadMidiPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const metronomeGainRef = useRef<GainNode | null>(null);
@@ -281,6 +393,9 @@ export default function App() {
   const metronomeDotBeat = metronomeDotActive
     ? ((Math.floor(visualCurrentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
     : 1;
+  const scoreTrackSteps = midiStepMap;
+
+  void stepMap;
 
   const snapTime = useCallback(
     (t: number) => {
@@ -1615,7 +1730,8 @@ export default function App() {
           </div>
         </div>
 
-        <ScoreView
+        <ScoreViewWithMidiDebug
+          midiDebugEvents={midiDrumEvents}
           duration={duration}
           bpm={bpm}
           beatsPerBar={beatsPerBar}
@@ -1625,7 +1741,7 @@ export default function App() {
           loopStart={loopStart}
           loopEnd={loopEnd}
           hasLoop={hasLoop}
-          trackSteps={stepMap}
+          trackSteps={scoreTrackSteps}
           onGridTimeAction={handleGridTimeAction}
           onSeek={seekToBarTime}
           countInActive={countInActive}
