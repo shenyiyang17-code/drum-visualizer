@@ -4,6 +4,7 @@ type TrackName = "HH" | "SD" | "BD";
 
 type MidiDebugEvent = {
   time: number;
+  stepIndex: number;
   instrument: string;
   articulation: string;
   velocity: number;
@@ -120,7 +121,7 @@ export default function ScoreView({
   const visibleEndTime = visibleStartTime + VISIBLE_BAR_COUNT * secondsPerBar;
   const hasMidiDebugEvents = (midiDebugEvents?.length ?? 0) > 0;
   const visibleMidiDebugEvents = (midiDebugEvents ?? []).filter(
-    (event) => event.time >= visibleStartTime && event.time < visibleEndTime
+    (event) => event.stepIndex >= pageStartStep && event.stepIndex < pageStartStep + visibleStepCount
   );
 
   useEffect(() => {
@@ -455,8 +456,7 @@ export default function ScoreView({
                     .filter((event) => event.instrument === lane)
                     .map((event, index) => {
                       const left =
-                        ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
-                        visibleWidth;
+                        (event.stepIndex - pageStartStep) * stepWidth + stepWidth / 2;
                       const isTom = lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR";
                       const symbol = isTom ? "●" : "x";
 
@@ -630,7 +630,7 @@ export default function ScoreView({
                       const hhPriority: Record<string, number> = { pedal: 2, open: 1 };
                       const byStep = new Map<number, MidiDebugEvent>();
                       for (const ev of trackEvents) {
-                        const key = Math.round(ev.time / stepDuration);
+                        const key = ev.stepIndex;
                         const prev = byStep.get(key);
                         if (
                           !prev ||
@@ -645,8 +645,7 @@ export default function ScoreView({
 
                     return trackEvents.map((event, index) => {
                       const left =
-                        ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
-                        visibleWidth;
+                        (event.stepIndex - pageStartStep) * stepWidth + stepWidth / 2;
                       const isDeemphasized =
                         track === "HH" && activeCymbal === "RD";
                       const midiDebugSymbol =
