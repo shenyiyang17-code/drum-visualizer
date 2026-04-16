@@ -320,7 +320,7 @@ export default function App() {
 
     const loadMidiPreview = async () => {
       try {
-        const response = await fetch(encodeURI("/midi/080 Half-Time Pop.mid"));
+        const response = await fetch(encodeURI("/midi/080 Half-Time Pop Ride.mid"));
         if (!response.ok) {
           throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
         }
@@ -332,7 +332,7 @@ export default function App() {
         const firstTrack = midi.tracks[0];
 
         if (!firstTrack) {
-          console.log("[MIDI V3] No tracks found in /midi/080 Half-Time Pop.mid");
+          console.log("[MIDI V3] No tracks found in /midi/080 Half-Time Pop Ride.mid");
           return;
         }
 
@@ -402,6 +402,28 @@ export default function App() {
             );
             break;
           }
+        }
+
+        // --- V3 step 21: detect HH vs RD overlaps ---
+        const hhEvents = normalizedV3DrumEvents.filter((e) => e.instrument === "HH");
+        const overlapThreshold = 0.02;
+        const overlaps: Array<{ time: number; hh: V3TempDrumEvent; rd: V3TempDrumEvent }> = [];
+        let rdIdx = 0;
+        for (const hh of hhEvents) {
+          while (rdIdx < rdEvents.length && rdEvents[rdIdx].time < hh.time - overlapThreshold) {
+            rdIdx++;
+          }
+          for (
+            let j = rdIdx;
+            j < rdEvents.length && rdEvents[j].time <= hh.time + overlapThreshold;
+            j++
+          ) {
+            overlaps.push({ time: hh.time, hh, rd: rdEvents[j] });
+          }
+        }
+        console.log("[MIDI V3] HH/RD overlap count", overlaps.length);
+        if (overlaps.length > 0) {
+          console.log("[MIDI V3] HH/RD overlap sample", overlaps.slice(0, 5));
         }
       } catch (error) {
         console.error("[MIDI V3] Failed to load or parse MIDI", error);
