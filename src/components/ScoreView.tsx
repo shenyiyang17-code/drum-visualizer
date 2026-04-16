@@ -34,6 +34,7 @@ type Props = {
 };
 
 const TRACKS: TrackName[] = ["HH", "SD", "BD"];
+const MIDI_ONLY_LANES = ["CR", "RD"] as const;
 
 const LEFT_GUTTER = 72;
 const STEP_WIDTH = 28;
@@ -111,7 +112,8 @@ export default function ScoreView({
   const barWidth = stepsPerBar * stepWidth;
   const visibleWidth = barWidth * VISIBLE_BAR_COUNT;
   const scoreContentOpacity = countInActive ? 0.72 : 1;
-  const scoreAreaHeight = BAR_LABEL_HEIGHT + HEADER_HEIGHT + TRACKS.length * ROW_HEIGHT;
+  const totalLaneCount = MIDI_ONLY_LANES.length + TRACKS.length;
+  const scoreAreaHeight = BAR_LABEL_HEIGHT + HEADER_HEIGHT + totalLaneCount * ROW_HEIGHT;
   const visibleStartTime = pageStartBar * secondsPerBar;
   const visibleEndTime = visibleStartTime + VISIBLE_BAR_COUNT * secondsPerBar;
   const hasMidiDebugEvents = (midiDebugEvents?.length ?? 0) > 0;
@@ -340,9 +342,150 @@ export default function ScoreView({
             </div>
           </div>
 
-          {/* Rows */}
+          {/* MIDI-only lanes (CR / RD) */}
+          {MIDI_ONLY_LANES.map((lane, laneIndex) => {
+            const top = BAR_LABEL_HEIGHT + HEADER_HEIGHT + laneIndex * ROW_HEIGHT;
+
+            return (
+              <div
+                key={lane}
+                style={{
+                  position: "absolute",
+                  top,
+                  left: 0,
+                  width: "100%",
+                  height: ROW_HEIGHT,
+                  display: "flex",
+                  borderBottom: "1px solid #1f2937",
+                }}
+              >
+                <div
+                  style={{
+                    width: LEFT_GUTTER,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#101722",
+                    color: "#e5e7eb",
+                    fontWeight: 700,
+                  }}
+                >
+                  {lane}
+                </div>
+
+                <div
+                  style={{
+                    position: "relative",
+                    width: visibleWidth,
+                    height: "100%",
+                    opacity: scoreContentOpacity,
+                    transition: "opacity 140ms ease-out",
+                  }}
+                >
+                  {/* Preview bar background */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: (previewBarStartStep - pageStartStep) * stepWidth,
+                      top: 0,
+                      width: barWidth,
+                      height: "100%",
+                      background: "rgba(0, 0, 0, 0.8)",
+                      pointerEvents: "none",
+                      zIndex: 2,
+                    }}
+                  />
+
+                  {/* Empty step cell backgrounds */}
+                  {Array.from({ length: visibleStepCount }).map((_, relativeStep) => {
+                    const step = pageStartStep + relativeStep;
+                    const isCurrent = step === currentStep;
+
+                    return (
+                      <div
+                        key={step}
+                        style={{
+                          position: "absolute",
+                          left: relativeStep * stepWidth,
+                          width: stepWidth,
+                          height: "100%",
+                          background: isCurrent ? "rgba(59,130,246,0.2)" : "#0f1722",
+                        }}
+                      />
+                    );
+                  })}
+
+                  {/* Bar separator lines */}
+                  {Array.from({ length: VISIBLE_BAR_COUNT + 1 }).map((_, separatorIndex) => {
+                    const barStep = (pageStartBar + separatorIndex) * stepsPerBar;
+                    const barX = (barStep - pageStartStep) * stepWidth;
+                    const isPreviewBoundary = separatorIndex === PRACTICE_BAR_COUNT;
+
+                    if (barX < 0 || barX > visibleStepCount * stepWidth) return null;
+
+                    let lineWidth = 2;
+                    let lineColor = "rgba(148, 163, 184, 0.5)";
+
+                    if (isPreviewBoundary) {
+                      lineWidth = 4;
+                      lineColor = "#3b82f6";
+                    }
+
+                    return (
+                      <div
+                        key={`sep-${separatorIndex}`}
+                        style={{
+                          position: "absolute",
+                          left: barX - lineWidth / 2,
+                          top: 0,
+                          width: lineWidth,
+                          height: "100%",
+                          background: lineColor,
+                          pointerEvents: "none",
+                          zIndex: 3,
+                        }}
+                      />
+                    );
+                  })}
+
+                  {/* MIDI events — cymbal-style "x" */}
+                  {visibleMidiDebugEvents
+                    .filter((event) => event.instrument === lane)
+                    .map((event, index) => {
+                      const left =
+                        ((event.time - visibleStartTime) / (visibleEndTime - visibleStartTime)) *
+                        visibleWidth;
+
+                      return (
+                        <div
+                          key={`midi-${lane}-${event.time}-${index}`}
+                          style={{
+                            position: "absolute",
+                            left,
+                            top: "50%",
+                            transform: "translate(-50%, -50%)",
+                            opacity: 0.95,
+                            pointerEvents: "none",
+                            zIndex: 4,
+                            color: "#f59e0b",
+                            fontSize: 16,
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            textShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                          }}
+                        >
+                          x
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Rows (HH / SD / BD) */}
           {TRACKS.map((track, rowIndex) => {
-            const top = BAR_LABEL_HEIGHT + HEADER_HEIGHT + rowIndex * ROW_HEIGHT;
+            const top = BAR_LABEL_HEIGHT + HEADER_HEIGHT + (MIDI_ONLY_LANES.length + rowIndex) * ROW_HEIGHT;
             const activeSteps = trackSteps[track];
 
             return (
