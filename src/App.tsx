@@ -17,9 +17,12 @@ type DrumEvent = {
   track: TrackName;
 };
 
+type MappedDrumInstrument = Exclude<BasicDrumInstrument, "UNMAPPED">;
+type MappedDrumArticulation = Exclude<V3DrumArticulation, "unknown">;
+
 type MappedDrumInfo = {
-  instrument: BasicDrumInstrument;
-  articulation: Exclude<V3DrumArticulation, "ghost">;
+  instrument: MappedDrumInstrument;
+  articulation: MappedDrumArticulation;
 };
 
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
@@ -204,18 +207,30 @@ function buildStepMap(
   return map;
 }
 
+// 第一版映射规则
+const MIDI_NOTE_TO_DRUM_INFO: Record<number, MappedDrumInfo> = {
+  36: { instrument: "BD", articulation: "normal" },
+  37: { instrument: "SD", articulation: "ghost" },
+  38: { instrument: "SD", articulation: "normal" },
+  40: { instrument: "SD", articulation: "ghost" },
+  41: { instrument: "TM_FLOOR", articulation: "normal" },
+  42: { instrument: "HH", articulation: "closed" },
+  43: { instrument: "TM_FLOOR", articulation: "normal" },
+  44: { instrument: "HH", articulation: "pedal" },
+  45: { instrument: "TM_MID", articulation: "normal" },
+  46: { instrument: "HH", articulation: "open" },
+  47: { instrument: "TM_MID", articulation: "normal" },
+  48: { instrument: "TM_HIGH", articulation: "normal" },
+  49: { instrument: "CR", articulation: "normal" },
+  50: { instrument: "TM_HIGH", articulation: "normal" },
+  51: { instrument: "RD", articulation: "normal" },
+  53: { instrument: "RD", articulation: "normal" },
+  57: { instrument: "CR", articulation: "normal" },
+  59: { instrument: "RD", articulation: "normal" },
+};
+
 function mapMidiNoteToDrumInfo(midiNote: number): MappedDrumInfo | null {
-  if (midiNote === 36) return { instrument: "BD", articulation: "normal" };
-  if (midiNote === 38) return { instrument: "SD", articulation: "normal" };
-  if (midiNote === 42) return { instrument: "HH", articulation: "closed" };
-  if (midiNote === 44) return { instrument: "HH", articulation: "pedal" };
-  if (midiNote === 46) return { instrument: "HH", articulation: "open" };
-  if (midiNote === 49) return { instrument: "CR", articulation: "normal" };
-  if (midiNote === 51) return { instrument: "RD", articulation: "normal" };
-  if (midiNote === 48 || midiNote === 50) return { instrument: "TM_HIGH", articulation: "normal" };
-  if (midiNote === 45 || midiNote === 47) return { instrument: "TM_MID", articulation: "normal" };
-  if (midiNote === 41 || midiNote === 43) return { instrument: "TM_FLOOR", articulation: "normal" };
-  return null;
+  return MIDI_NOTE_TO_DRUM_INFO[midiNote] ?? null;
 }
 
 export default function App() {
@@ -306,7 +321,7 @@ export default function App() {
       }));
   }, [midiDrumEvents]);
 
-  console.log("[MIDI V3] notesByStep", notesByStep);
+  console.log("[V5] notesByStep", notesByStep.slice(0, 10));
 
   const midiStepMap = useMemo(() => {
     const map: Record<TrackName, Set<number>> = {
@@ -337,9 +352,10 @@ export default function App() {
 
     const loadMidiPreview = async () => {
       console.log("[V4] loadMidiPreview START");
+      console.log("[V5] test file:", "test_basic.mid");
 
       try {
-        const response = await fetch("/midi/080 Half-Time Pop Ride.mid");
+        const response = await fetch("/midi/test_basic.mid");
         if (!response.ok) {
           console.error("[V4] fetch failed", response.status);
           throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
@@ -352,6 +368,7 @@ export default function App() {
         console.log("[V4] MIDI loaded", midi);
 
         const midiBpm = midi.header.tempos[0]?.bpm;
+        const firstTrack = midi.tracks[0];
         const allNotes = midi.tracks.flatMap((t) => t.notes);
 
         allNotes.sort((a, b) => a.time - b.time);
@@ -375,10 +392,23 @@ export default function App() {
           return;
         }
 
+        const rawMidiNoteCounts = (firstTrack?.notes ?? []).reduce((acc, note) => {
+          acc[note.midi] = (acc[note.midi] || 0) + 1;
+          return acc;
+        }, {} as Record<number, number>);
+
+        console.log("[MAP] raw midi note counts", rawMidiNoteCounts);
+
+        const unmappedRawNotes = (firstTrack?.notes ?? [])
+          .filter((note) => !mapMidiNoteToDrumInfo(note.midi))
+          .slice(0, 20)
+          .map((note) => ({ midi: note.midi, time: note.time }));
+
+        console.log("[MAP] unmapped raw notes sample", unmappedRawNotes);
+
         const normalizedV3DrumEvents: V3TempDrumEvent[] = allNotes
           .map((note) => {
             const mapped = mapMidiNoteToDrumInfo(note.midi);
-            if (!mapped) return null;
 
             const rawStep = note.time / stepDuration;
             const si = Math.round(rawStep);
@@ -390,12 +420,11 @@ export default function App() {
               stepIndex: si,
               beatIndex,
               barIndex: Math.floor(beatIndex / beatsPerBar),
-              instrument: mapped.instrument,
-              articulation: mapped.articulation,
+              instrument: mapped?.instrument ?? "UNMAPPED",
+              articulation: mapped?.articulation ?? "unknown",
               velocity: note.velocity,
             };
-          })
-          .filter(Boolean) as V3TempDrumEvent[];
+          });
 
         console.log("[V4-2] mapped events", normalizedV3DrumEvents.length);
         console.log(
@@ -414,6 +443,14 @@ export default function App() {
             step: e.stepIndex,
           }))
         );
+
+        const mappedCounts = normalizedV3DrumEvents.reduce((acc, ev) => {
+          const key = `${ev.instrument}:${ev.articulation}`;
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        console.log("[MAP] mapped instrument/articulation counts", mappedCounts);
 
         const cleanedEvents: V3TempDrumEvent[] = [];
         const stepMap = new Map<string, V3TempDrumEvent>();

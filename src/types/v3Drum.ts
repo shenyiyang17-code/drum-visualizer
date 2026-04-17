@@ -7,11 +7,12 @@ export const V3_ALLOWED_INSTRUMENTS = [
   "TM_HIGH",
   "TM_MID",
   "TM_FLOOR",
+  "UNMAPPED",
 ] as const;
 
 export type BasicDrumInstrument = (typeof V3_ALLOWED_INSTRUMENTS)[number];
 
-export type V3DrumArticulation = "normal" | "closed" | "open" | "pedal" | "ghost";
+export type V3DrumArticulation = "normal" | "closed" | "open" | "pedal" | "ghost" | "unknown";
 
 export type V3TempDrumEvent = {
   time: number;
