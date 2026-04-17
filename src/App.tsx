@@ -393,6 +393,21 @@ function buildPipelineInputFromExternalInitialEvents(
   };
 }
 
+function buildMockExternalInitialEvents(): InitialDrumEvent[] {
+  return [
+    { time: 0.0, instrument: "BD", articulation: "normal", velocity: 0.9 },
+    { time: 0.0, instrument: "HH", articulation: "closed", velocity: 0.7 },
+    { time: 0.5, instrument: "HH", articulation: "closed", velocity: 0.7 },
+    { time: 1.0, instrument: "SD", articulation: "normal", velocity: 0.85 },
+    { time: 1.0, instrument: "HH", articulation: "closed", velocity: 0.7 },
+    { time: 1.5, instrument: "HH", articulation: "open", velocity: 0.72 },
+    { time: 2.0, instrument: "BD", articulation: "normal", velocity: 0.88 },
+    { time: 2.0, instrument: "HH", articulation: "closed", velocity: 0.68 },
+    { time: 3.0, instrument: "SD", articulation: "normal", velocity: 0.84 },
+    { time: 3.0, instrument: "CR", articulation: "normal", velocity: 0.8 },
+  ];
+}
+
 void buildPipelineInputFromExternalInitialEvents;
 
 export default function App() {
@@ -569,6 +584,10 @@ export default function App() {
   // 3 = 135 Motown Beat Hat.mid
   // 4 = 080 Ride (old).mid
   const ACTIVE_MIDI_TEST_INDEX = 2;
+  // 可选：
+  // "midi_test"
+  // "external_initial_events"
+  const ACTIVE_INPUT_SOURCE: InputSourceType = "external_initial_events";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -579,6 +598,7 @@ export default function App() {
       console.log("[V5] test file:", activeMidiTestFile);
       console.log("[MAP-TEST] current midi file", activeMidiTestFile);
       console.log("[FLOW-TEST] active midi file", activeMidiTestFile);
+      console.log("[ADAPTER] active input source", ACTIVE_INPUT_SOURCE);
 
       try {
         const response = await fetch(encodeURI(`/midi/${activeMidiTestFile}`));
@@ -614,10 +634,6 @@ export default function App() {
           console.log("[V4] primary bpm", midiBpm);
         }
 
-        if (allNotes.length === 0) {
-          return;
-        }
-
         const rawMidiNoteCounts = (firstTrack?.notes ?? []).reduce((acc, note) => {
           acc[note.midi] = (acc[note.midi] || 0) + 1;
           return acc;
@@ -632,14 +648,25 @@ export default function App() {
 
         console.log("[MAP] unmapped raw notes sample", unmappedRawNotes);
 
-        const pipelineInput: PipelineInput = {
-          sourceType: "midi_test",
-          midiNotes: (firstTrack?.notes ?? []).map((note) => ({
-            midi: note.midi,
-            time: note.time,
-            velocity: note.velocity,
-          })),
+        const pipelineInputBySource: Record<InputSourceType, PipelineInput> = {
+          midi_test: {
+            sourceType: "midi_test",
+            midiNotes: (firstTrack?.notes ?? []).map((note) => ({
+              midi: note.midi,
+              time: note.time,
+              velocity: note.velocity,
+            })),
+          },
+          external_initial_events: buildPipelineInputFromExternalInitialEvents(
+            buildMockExternalInitialEvents()
+          ),
         };
+
+        const pipelineInput = pipelineInputBySource[ACTIVE_INPUT_SOURCE];
+
+        if (pipelineInput.sourceType === "midi_test" && pipelineInput.midiNotes.length === 0) {
+          return;
+          };
 
         const initialDrumEvents = buildPipelineInputToInitialEvents(pipelineInput);
 
@@ -647,6 +674,14 @@ export default function App() {
 
         if (pipelineInput.sourceType === "midi_test") {
           console.log("[ADAPTER] midi note count", pipelineInput.midiNotes.length);
+        }
+
+        if (pipelineInput.sourceType === "external_initial_events") {
+          console.log("[ADAPTER] external initial event count", pipelineInput.initialEvents.length);
+          console.log(
+            "[ADAPTER] external initial event sample",
+            pipelineInput.initialEvents.slice(0, 10)
+          );
         }
 
         console.log("[ADAPTER] initial event count", initialDrumEvents.length);
