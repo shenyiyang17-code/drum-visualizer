@@ -1083,6 +1083,52 @@ function buildV1NotationFoundationReadiness(params: {
   };
 }
 
+function buildV1ArticulationSupportSummary(
+  events: Array<{ instrument: string; articulation: string }>
+) {
+  let hhClosedCount = 0;
+  let hhOpenCount = 0;
+  let hhPedalCount = 0;
+  let sdNormalCount = 0;
+  let sdGhostCount = 0;
+
+  for (const event of events) {
+    if (event.instrument === "HH" && event.articulation === "closed") hhClosedCount += 1;
+    if (event.instrument === "HH" && event.articulation === "open") hhOpenCount += 1;
+    if (event.instrument === "HH" && event.articulation === "pedal") hhPedalCount += 1;
+    if (event.instrument === "SD" && event.articulation === "normal") sdNormalCount += 1;
+    if (event.instrument === "SD" && event.articulation === "ghost") sdGhostCount += 1;
+  }
+
+  return {
+    hhClosedCount,
+    hhOpenCount,
+    hhPedalCount,
+    sdNormalCount,
+    sdGhostCount,
+  };
+}
+
+function buildV1ArticulationReadiness(summary: {
+  hhClosedCount: number;
+  hhOpenCount: number;
+  hhPedalCount: number;
+  sdNormalCount: number;
+  sdGhostCount: number;
+}) {
+  return {
+    hasHiHatClosed: summary.hhClosedCount > 0,
+    hasHiHatOpen: summary.hhOpenCount > 0,
+    hasHiHatPedal: summary.hhPedalCount > 0,
+    hasSnareNormal: summary.sdNormalCount > 0,
+    hasSnareGhost: summary.sdGhostCount > 0,
+    supportsHiHatArticulationFamily:
+      summary.hhClosedCount > 0 || summary.hhOpenCount > 0 || summary.hhPedalCount > 0,
+    supportsSnareArticulationFamily:
+      summary.sdNormalCount > 0 || summary.sdGhostCount > 0,
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -1391,6 +1437,16 @@ export default function App() {
     [finalScoreEvents, v1NotationFoundationSummary, v1NotationSameStepLaneCombos]
   );
 
+  const v1ArticulationSupportSummary = useMemo(
+    () => buildV1ArticulationSupportSummary(finalScoreEvents),
+    [finalScoreEvents]
+  );
+
+  const v1ArticulationReadiness = useMemo(
+    () => buildV1ArticulationReadiness(v1ArticulationSupportSummary),
+    [v1ArticulationSupportSummary]
+  );
+
   useEffect(() => {
     console.log("[OUTPUT] notesByStep sample", notesByStepCheck);
   }, [notesByStepCheck]);
@@ -1440,6 +1496,29 @@ export default function App() {
         v1NotationFoundationReadiness.supportsMultipleNoteheadTypes,
     });
   }, [finalScoreEvents, v1NotationFoundationReadiness]);
+
+  useEffect(() => {
+    if (finalScoreEvents.length === 0) {
+      return;
+    }
+
+    console.log(
+      "[ARTICULATION] support summary",
+      v1ArticulationSupportSummary
+    );
+
+    console.log("[ARTICULATION] readiness", v1ArticulationReadiness);
+
+    console.log("[ARTICULATION] module 2A conclusion", {
+      hiHatFamilyObserved:
+        v1ArticulationReadiness.supportsHiHatArticulationFamily,
+      snareFamilyObserved:
+        v1ArticulationReadiness.supportsSnareArticulationFamily,
+      currentSampleHasOpenHiHat: v1ArticulationReadiness.hasHiHatOpen,
+      currentSampleHasPedalHiHat: v1ArticulationReadiness.hasHiHatPedal,
+      currentSampleHasGhostSnare: v1ArticulationReadiness.hasSnareGhost,
+    });
+  }, [finalScoreEvents, v1ArticulationReadiness, v1ArticulationSupportSummary]);
 
   console.log("[V5] notesByStep", notesByStep.slice(0, 10));
 
