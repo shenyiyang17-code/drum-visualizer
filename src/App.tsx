@@ -351,11 +351,14 @@ export default function App() {
     let cancelled = false;
 
     const loadMidiPreview = async () => {
+      const currentMidiFile = "080 Half-Time Pop Ride.mid";
+
       console.log("[V4] loadMidiPreview START");
-      console.log("[V5] test file:", "test_basic.mid");
+      console.log("[V5] test file:", currentMidiFile);
+      console.log("[MAP-TEST] current midi file", currentMidiFile);
 
       try {
-        const response = await fetch("/midi/test_basic.mid");
+        const response = await fetch("/midi/080 Half-Time Pop Ride.mid");
         if (!response.ok) {
           console.error("[V4] fetch failed", response.status);
           throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
@@ -451,6 +454,18 @@ export default function App() {
         }, {} as Record<string, number>);
 
         console.log("[MAP] mapped instrument/articulation counts", mappedCounts);
+
+        const mappedInstrumentsPresent = Array.from(
+          new Set(normalizedV3DrumEvents.map((ev) => ev.instrument))
+        );
+        const coverageCheck = {
+          total: normalizedV3DrumEvents.length,
+          mapped: normalizedV3DrumEvents.filter((ev) => ev.instrument !== "UNMAPPED").length,
+          unmapped: normalizedV3DrumEvents.filter((ev) => ev.instrument === "UNMAPPED").length,
+        };
+
+        console.log("[MAP-TEST] mapped instruments present", mappedInstrumentsPresent);
+        console.log("[MAP-TEST] coverage check", coverageCheck);
 
         const cleanedEvents: V3TempDrumEvent[] = [];
         const stepMap = new Map<string, V3TempDrumEvent>();
