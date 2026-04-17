@@ -51,6 +51,18 @@ type InitialDrumEvent = {
   velocity: number;
 };
 
+type InputSourceType = "midi_test" | "external_initial_events";
+
+type PipelineInput =
+  | {
+      sourceType: Extract<InputSourceType, "midi_test">;
+      midiNotes: Array<{ midi: number; time: number; velocity: number }>;
+    }
+  | {
+      sourceType: Extract<InputSourceType, "external_initial_events">;
+      initialEvents: InitialDrumEvent[];
+    };
+
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
 
 type DrumDataShape =
@@ -364,6 +376,25 @@ function buildInitialDrumEventsFromMidiNotes(
   });
 }
 
+function buildPipelineInputToInitialEvents(input: PipelineInput): InitialDrumEvent[] {
+  if (input.sourceType === "midi_test") {
+    return buildInitialDrumEventsFromMidiNotes(input.midiNotes);
+  }
+
+  return input.initialEvents;
+}
+
+function buildPipelineInputFromExternalInitialEvents(
+  initialEvents: InitialDrumEvent[]
+): PipelineInput {
+  return {
+    sourceType: "external_initial_events",
+    initialEvents,
+  };
+}
+
+void buildPipelineInputFromExternalInitialEvents;
+
 export default function App() {
   const ScoreViewWithMidiDebug = ScoreView as any;
 
@@ -601,13 +632,47 @@ export default function App() {
 
         console.log("[MAP] unmapped raw notes sample", unmappedRawNotes);
 
-        const initialDrumEvents = buildInitialDrumEventsFromMidiNotes(
-          (firstTrack?.notes ?? []).map((note) => ({
+        const pipelineInput: PipelineInput = {
+          sourceType: "midi_test",
+          midiNotes: (firstTrack?.notes ?? []).map((note) => ({
             midi: note.midi,
             time: note.time,
             velocity: note.velocity,
+          })),
+        };
+
+        const initialDrumEvents = buildPipelineInputToInitialEvents(pipelineInput);
+
+        console.log("[ADAPTER] pipeline input source", pipelineInput.sourceType);
+
+        if (pipelineInput.sourceType === "midi_test") {
+          console.log("[ADAPTER] midi note count", pipelineInput.midiNotes.length);
+        }
+
+        console.log("[ADAPTER] initial event count", initialDrumEvents.length);
+        console.log(
+          "[ADAPTER] initial event sample",
+          initialDrumEvents.slice(0, 10).map((ev) => ({
+            time: ev.time,
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            velocity: ev.velocity,
           }))
         );
+
+        const adapterIntegrityCheck = {
+          sourceType: pipelineInput.sourceType,
+          initialEventCount: initialDrumEvents.length,
+          invalidInitialEventCount: initialDrumEvents.filter(
+            (ev) =>
+              typeof ev.time !== "number" ||
+              typeof ev.velocity !== "number" ||
+              !ev.instrument ||
+              !ev.articulation
+          ).length,
+        };
+
+        console.log("[ADAPTER] integrity", adapterIntegrityCheck);
 
         console.log("[INPUT] initial drum event sample", initialDrumEvents.slice(0, 12));
 
