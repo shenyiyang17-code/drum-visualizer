@@ -13,6 +13,11 @@ import {
   type ExternalTranscriptionInstrument,
   type ExternalTranscriptionSampleName,
 } from "./data/externalTranscriptionResults";
+import {
+  EXTERNAL_RESULT_FILES,
+  type ExternalResultFileEntry,
+  type ExternalResultFileName,
+} from "./data/externalResultFiles";
 import drumDataRaw from "./drum_events.json";
 import {
   V3_ALLOWED_INSTRUMENTS,
@@ -68,7 +73,8 @@ type InputSourceType = "midi_test" | "external_initial_events";
 type InputMode =
   | "midi_test"
   | "external_initial_events"
-  | "external_transcription_results";
+  | "external_transcription_results"
+  | "external_result_file";
 
 type PipelineInput =
   | {
@@ -85,6 +91,7 @@ type ActiveInputModeSummary = {
   midiTestFile: string | null;
   externalInitialSample: string | null;
   externalTranscriptionSample: string | null;
+  externalResultFile: string | null;
 };
 
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
@@ -499,11 +506,26 @@ function buildPipelineInputFromExternalTranscriptionSample(
   return buildPipelineInputFromExternalInitialEvents(initialEvents);
 }
 
+function buildPipelineInputFromExternalResultFile(
+  fileName: ExternalResultFileName
+): PipelineInput {
+  const fileEntry: ExternalResultFileEntry = EXTERNAL_RESULT_FILES[fileName];
+
+  if (fileEntry.format === "external_transcription_results") {
+    return buildPipelineInputFromExternalTranscriptionSample(fileEntry.sampleName);
+  }
+
+  return buildPipelineInputFromExternalInitialEvents(
+    getActiveExternalInitialEvents(fileEntry.sampleName)
+  );
+}
+
 function buildActiveInputModeSummary(params: {
   mode: InputMode;
   activeMidiTestFile: string;
   activeExternalSample: string;
   activeTranscriptionSample: string;
+  activeExternalResultFile: string;
 }): ActiveInputModeSummary {
   return {
     mode: params.mode,
@@ -514,6 +536,8 @@ function buildActiveInputModeSummary(params: {
       params.mode === "external_transcription_results"
         ? params.activeTranscriptionSample
         : null,
+    externalResultFile:
+      params.mode === "external_result_file" ? params.activeExternalResultFile : null,
   };
 }
 
@@ -522,6 +546,7 @@ function buildPipelineInputFromActiveMode(params: {
   midiNotes: Array<{ midi: number; time: number; velocity: number }>;
   activeExternalSample: ExternalInitialSampleName;
   activeTranscriptionSample: ExternalTranscriptionSampleName;
+  activeExternalResultFile: ExternalResultFileName;
 }): PipelineInput {
   if (params.mode === "midi_test") {
     return {
@@ -536,9 +561,13 @@ function buildPipelineInputFromActiveMode(params: {
     );
   }
 
-  return buildPipelineInputFromExternalTranscriptionSample(
-    params.activeTranscriptionSample
-  );
+  if (params.mode === "external_transcription_results") {
+    return buildPipelineInputFromExternalTranscriptionSample(
+      params.activeTranscriptionSample
+    );
+  }
+
+  return buildPipelineInputFromExternalResultFile(params.activeExternalResultFile);
 }
 
 void buildPipelineInputFromExternalInitialEvents;
@@ -721,7 +750,8 @@ export default function App() {
   // "midi_test"
   // "external_initial_events"
   // "external_transcription_results"
-  const ACTIVE_INPUT_MODE: InputMode = "external_transcription_results";
+  // "external_result_file"
+  const ACTIVE_INPUT_MODE: InputMode = "external_result_file";
   // 可选：
   // "basic_groove"
   // "ride_groove"
@@ -730,6 +760,10 @@ export default function App() {
   // "basic_transcription"
   // "ride_transcription"
   const ACTIVE_TRANSCRIPTION_SAMPLE: ExternalTranscriptionSampleName = "ride_transcription";
+  // 可选：
+  // "transcription_file_demo"
+  // "initial_events_file_demo"
+  const ACTIVE_EXTERNAL_RESULT_FILE: ExternalResultFileName = "transcription_file_demo";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -741,6 +775,7 @@ export default function App() {
         activeMidiTestFile,
         activeExternalSample: ACTIVE_EXTERNAL_SAMPLE,
         activeTranscriptionSample: ACTIVE_TRANSCRIPTION_SAMPLE,
+        activeExternalResultFile: ACTIVE_EXTERNAL_RESULT_FILE,
       });
 
       console.log("[V4] loadMidiPreview START");
@@ -749,6 +784,14 @@ export default function App() {
       console.log("[FLOW-TEST] active midi file", activeMidiTestFile);
       console.log("[INPUT-MODE] active mode", ACTIVE_INPUT_MODE);
       console.log("[INPUT-MODE] summary", activeInputModeSummary);
+      if (ACTIVE_INPUT_MODE === "external_result_file") {
+        console.log("[RESULT-FILE] active file", ACTIVE_EXTERNAL_RESULT_FILE);
+        console.log(
+          "[RESULT-FILE] file entry",
+          EXTERNAL_RESULT_FILES[ACTIVE_EXTERNAL_RESULT_FILE]
+        );
+        console.log("[RESULT-FILE] file source", "src/data/externalResultFiles.ts");
+      }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
       console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
       console.log("[TRANSCRIPTION] sample source", "src/data/externalTranscriptionResults.ts");
@@ -811,6 +854,7 @@ export default function App() {
           })),
           activeExternalSample: ACTIVE_EXTERNAL_SAMPLE,
           activeTranscriptionSample: ACTIVE_TRANSCRIPTION_SAMPLE,
+          activeExternalResultFile: ACTIVE_EXTERNAL_RESULT_FILE,
         });
 
         console.log("[INPUT-MODE] pipeline source check", {
