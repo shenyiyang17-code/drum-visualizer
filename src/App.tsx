@@ -626,15 +626,128 @@ function buildPipelineInputFromExternalResultFile(
   );
 }
 
+function isValidAudioVideoSourceKind(
+  kind: unknown
+): kind is "audio_file" | "video_file" {
+  return kind === "audio_file" || kind === "video_file";
+}
+
+function isValidAudioVideoTranscriptionFormat(
+  format: unknown
+): format is "external_transcription_results" {
+  return format === "external_transcription_results";
+}
+
+function validateAudioVideoSourceResult(result: unknown) {
+  if (!result || typeof result !== "object") {
+    return {
+      isValid: false,
+      reason: "source result is not an object",
+      sourceKind: null,
+      transcriptionFormat: null,
+      transcriptionCount: 0,
+    };
+  }
+
+  const maybeResult = result as {
+    sourceName?: unknown;
+    sourceKind?: unknown;
+    transcriptionFormat?: unknown;
+    transcriptionContent?: unknown;
+  };
+
+  if (
+    typeof maybeResult.sourceName !== "string" ||
+    maybeResult.sourceName.length === 0
+  ) {
+    return {
+      isValid: false,
+      reason: "invalid source name",
+      sourceKind: null,
+      transcriptionFormat: null,
+      transcriptionCount: 0,
+    };
+  }
+
+  if (!isValidAudioVideoSourceKind(maybeResult.sourceKind)) {
+    return {
+      isValid: false,
+      reason: "invalid source kind",
+      sourceKind: maybeResult.sourceKind ?? null,
+      transcriptionFormat: null,
+      transcriptionCount: 0,
+    };
+  }
+
+  if (!isValidAudioVideoTranscriptionFormat(maybeResult.transcriptionFormat)) {
+    return {
+      isValid: false,
+      reason: "invalid transcription format",
+      sourceKind: maybeResult.sourceKind,
+      transcriptionFormat: maybeResult.transcriptionFormat ?? null,
+      transcriptionCount: 0,
+    };
+  }
+
+  if (!Array.isArray(maybeResult.transcriptionContent)) {
+    return {
+      isValid: false,
+      reason: "transcription content is not an array",
+      sourceKind: maybeResult.sourceKind,
+      transcriptionFormat: maybeResult.transcriptionFormat,
+      transcriptionCount: 0,
+    };
+  }
+
+  return {
+    isValid: true,
+    reason: null,
+    sourceKind: maybeResult.sourceKind,
+    transcriptionFormat: maybeResult.transcriptionFormat,
+    transcriptionCount: maybeResult.transcriptionContent.length,
+  };
+}
+
+function validateAudioVideoTranscriptionContentSample(
+  result: AudioVideoSourceResult
+) {
+  const sample = result.transcriptionContent.slice(0, 10);
+
+  const invalidItemCount = sample.filter((item) => {
+    if (!item || typeof item !== "object") return true;
+
+    const maybeItem = item as Record<string, unknown>;
+
+    return (
+      typeof maybeItem.time !== "number" ||
+      typeof maybeItem.velocity !== "number" ||
+      typeof maybeItem.instrument !== "string"
+    );
+  }).length;
+
+  return {
+    checkedCount: sample.length,
+    invalidItemCount,
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResult(
   resultName: AudioVideoSourceResultName
 ): PipelineInput {
-  const resultData = AUDIO_VIDEO_SOURCE_RESULTS[resultName];
-  const result: AudioVideoSourceResult = {
-    sourceName: resultData.sourceName,
-    sourceKind: resultData.sourceKind,
-    transcriptionFormat: resultData.transcriptionFormat,
-    transcriptionContent: resultData.transcriptionContent.map((hit) => ({
+  const result = AUDIO_VIDEO_SOURCE_RESULTS[resultName];
+  const sourceValidation = validateAudioVideoSourceResult(result);
+
+  console.log("[AV-SOURCE] validation", sourceValidation);
+
+  if (!sourceValidation.isValid) {
+    return buildPipelineInputFromExternalInitialEvents([]);
+  }
+
+  const normalizedResult: AudioVideoSourceResult = {
+    sourceName: result.sourceName,
+    sourceKind: result.sourceKind,
+    transcriptionFormat: result.transcriptionFormat,
+    transcriptionContent: result.transcriptionContent.map((hit) => ({
       time: hit.time,
       instrument: hit.instrument,
       velocity: hit.velocity,
@@ -642,7 +755,7 @@ function buildPipelineInputFromAudioVideoSourceResult(
   };
 
   const initialEvents = buildInitialEventsFromExternalTranscriptionHits(
-    result.transcriptionContent.map((hit) => ({
+    normalizedResult.transcriptionContent.map((hit) => ({
       time: hit.time,
       instrument: hit.instrument,
       velocity: hit.velocity,
@@ -996,10 +1109,21 @@ export default function App() {
         );
       }
       if (activeInputModeSummary.audioVideoSourceResult !== null) {
-        const activeAudioVideoSource =
+        const activeSourceResult =
           AUDIO_VIDEO_SOURCE_RESULTS[ACTIVE_AUDIO_VIDEO_SOURCE_RESULT];
-        const activeAudioVideoSourceKind: AudioVideoSourceResult["sourceKind"] =
-          activeAudioVideoSource.sourceKind;
+        const activeAudioVideoSource: AudioVideoSourceResult = {
+          sourceName: activeSourceResult.sourceName,
+          sourceKind: activeSourceResult.sourceKind,
+          transcriptionFormat: activeSourceResult.transcriptionFormat,
+          transcriptionContent: activeSourceResult.transcriptionContent.map((hit) => ({
+            time: hit.time,
+            instrument: hit.instrument,
+            velocity: hit.velocity,
+          })),
+        };
+        const activeAudioVideoSourceKind = activeAudioVideoSource.sourceKind;
+        const contentSampleValidation =
+          validateAudioVideoTranscriptionContentSample(activeAudioVideoSource);
 
         console.log("[AV-SOURCE] active result", ACTIVE_AUDIO_VIDEO_SOURCE_RESULT);
         console.log("[AV-SOURCE] source name", activeAudioVideoSource.sourceName);
@@ -1033,6 +1157,10 @@ export default function App() {
         console.log(
           "[AV-SOURCE] transcription sample",
           activeAudioVideoSource.transcriptionContent.slice(0, 10)
+        );
+        console.log(
+          "[AV-SOURCE] transcription sample validation",
+          contentSampleValidation
         );
       }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
@@ -1203,14 +1331,29 @@ export default function App() {
         }
 
         if (activeInputModeSummary.audioVideoSourceResult !== null) {
-          const activeAudioVideoSource =
+          const activeSourceResult =
             AUDIO_VIDEO_SOURCE_RESULTS[ACTIVE_AUDIO_VIDEO_SOURCE_RESULT];
-          const activeAudioVideoSourceKind: AudioVideoSourceResult["sourceKind"] =
-            activeAudioVideoSource.sourceKind;
+          const activeAudioVideoSource: AudioVideoSourceResult = {
+            sourceName: activeSourceResult.sourceName,
+            sourceKind: activeSourceResult.sourceKind,
+            transcriptionFormat: activeSourceResult.transcriptionFormat,
+            transcriptionContent: activeSourceResult.transcriptionContent.map((hit) => ({
+              time: hit.time,
+              instrument: hit.instrument,
+              velocity: hit.velocity,
+            })),
+          };
+          const activeAudioVideoSourceKind = activeAudioVideoSource.sourceKind;
 
           console.log("[AV-SOURCE] pipeline entry summary", {
             activeResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
             sourceKind: activeAudioVideoSourceKind,
+            pipelineSourceType: pipelineInput.sourceType,
+            initialEventCount: initialDrumEvents.length,
+          });
+          console.log("[AV-SOURCE] validation summary", {
+            activeResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
+            sourceKind: activeAudioVideoSource.sourceKind,
             pipelineSourceType: pipelineInput.sourceType,
             initialEventCount: initialDrumEvents.length,
           });
