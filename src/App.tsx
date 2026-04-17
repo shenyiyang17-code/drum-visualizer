@@ -63,7 +63,9 @@ type InitialDrumEvent = {
   velocity: number;
 };
 
-type InputSourceType =
+type InputSourceType = "midi_test" | "external_initial_events";
+
+type InputMode =
   | "midi_test"
   | "external_initial_events"
   | "external_transcription_results";
@@ -77,6 +79,13 @@ type PipelineInput =
       sourceType: Extract<InputSourceType, "external_initial_events">;
       initialEvents: InitialDrumEvent[];
     };
+
+type ActiveInputModeSummary = {
+  mode: InputMode;
+  midiTestFile: string | null;
+  externalInitialSample: string | null;
+  externalTranscriptionSample: string | null;
+};
 
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
 
@@ -490,6 +499,48 @@ function buildPipelineInputFromExternalTranscriptionSample(
   return buildPipelineInputFromExternalInitialEvents(initialEvents);
 }
 
+function buildActiveInputModeSummary(params: {
+  mode: InputMode;
+  activeMidiTestFile: string;
+  activeExternalSample: string;
+  activeTranscriptionSample: string;
+}): ActiveInputModeSummary {
+  return {
+    mode: params.mode,
+    midiTestFile: params.mode === "midi_test" ? params.activeMidiTestFile : null,
+    externalInitialSample:
+      params.mode === "external_initial_events" ? params.activeExternalSample : null,
+    externalTranscriptionSample:
+      params.mode === "external_transcription_results"
+        ? params.activeTranscriptionSample
+        : null,
+  };
+}
+
+function buildPipelineInputFromActiveMode(params: {
+  mode: InputMode;
+  midiNotes: Array<{ midi: number; time: number; velocity: number }>;
+  activeExternalSample: ExternalInitialSampleName;
+  activeTranscriptionSample: ExternalTranscriptionSampleName;
+}): PipelineInput {
+  if (params.mode === "midi_test") {
+    return {
+      sourceType: "midi_test",
+      midiNotes: params.midiNotes,
+    };
+  }
+
+  if (params.mode === "external_initial_events") {
+    return buildPipelineInputFromExternalInitialEvents(
+      getActiveExternalInitialEvents(params.activeExternalSample)
+    );
+  }
+
+  return buildPipelineInputFromExternalTranscriptionSample(
+    params.activeTranscriptionSample
+  );
+}
+
 void buildPipelineInputFromExternalInitialEvents;
 
 export default function App() {
@@ -669,7 +720,8 @@ export default function App() {
   // 可选：
   // "midi_test"
   // "external_initial_events"
-  const ACTIVE_INPUT_SOURCE: InputSourceType = "external_transcription_results";
+  // "external_transcription_results"
+  const ACTIVE_INPUT_MODE: InputMode = "external_transcription_results";
   // 可选：
   // "basic_groove"
   // "ride_groove"
@@ -684,11 +736,19 @@ export default function App() {
     let cancelled = false;
 
     const loadMidiPreview = async () => {
+      const activeInputModeSummary = buildActiveInputModeSummary({
+        mode: ACTIVE_INPUT_MODE,
+        activeMidiTestFile,
+        activeExternalSample: ACTIVE_EXTERNAL_SAMPLE,
+        activeTranscriptionSample: ACTIVE_TRANSCRIPTION_SAMPLE,
+      });
+
       console.log("[V4] loadMidiPreview START");
       console.log("[V5] test file:", activeMidiTestFile);
       console.log("[MAP-TEST] current midi file", activeMidiTestFile);
       console.log("[FLOW-TEST] active midi file", activeMidiTestFile);
-      console.log("[ADAPTER] active input source", ACTIVE_INPUT_SOURCE);
+      console.log("[INPUT-MODE] active mode", ACTIVE_INPUT_MODE);
+      console.log("[INPUT-MODE] summary", activeInputModeSummary);
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
       console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
       console.log("[TRANSCRIPTION] sample source", "src/data/externalTranscriptionResults.ts");
@@ -742,41 +802,37 @@ export default function App() {
 
         console.log("[MAP] unmapped raw notes sample", unmappedRawNotes);
 
-        const buildActivePipelineInput = (sourceType: InputSourceType): PipelineInput => {
-          if (sourceType === "midi_test") {
-            return {
-              sourceType: "midi_test",
-              midiNotes: (firstTrack?.notes ?? []).map((note) => ({
-                midi: note.midi,
-                time: note.time,
-                velocity: note.velocity,
-              })),
-            };
-          }
+        const pipelineInput = buildPipelineInputFromActiveMode({
+          mode: ACTIVE_INPUT_MODE,
+          midiNotes: (firstTrack?.notes ?? []).map((note) => ({
+            midi: note.midi,
+            time: note.time,
+            velocity: note.velocity,
+          })),
+          activeExternalSample: ACTIVE_EXTERNAL_SAMPLE,
+          activeTranscriptionSample: ACTIVE_TRANSCRIPTION_SAMPLE,
+        });
 
-          if (sourceType === "external_initial_events") {
-            return buildPipelineInputFromExternalInitialEvents(
-              getActiveExternalInitialEvents(ACTIVE_EXTERNAL_SAMPLE)
-            );
-          }
-
-          return buildPipelineInputFromExternalTranscriptionSample(
-            ACTIVE_TRANSCRIPTION_SAMPLE
-          );
-        };
-
-        const pipelineInput = buildActivePipelineInput(ACTIVE_INPUT_SOURCE);
+        console.log("[INPUT-MODE] pipeline source check", {
+          mode: ACTIVE_INPUT_MODE,
+          pipelineSourceType: pipelineInput.sourceType,
+        });
 
         const activeTranscriptionHits =
-          ACTIVE_INPUT_SOURCE === "external_transcription_results"
+          activeInputModeSummary.externalTranscriptionSample !== null
             ? getActiveExternalTranscriptionHits(ACTIVE_TRANSCRIPTION_SAMPLE)
+            : [];
+
+        const activeExternalInitialEvents =
+          activeInputModeSummary.externalInitialSample !== null
+            ? getActiveExternalInitialEvents(ACTIVE_EXTERNAL_SAMPLE)
             : [];
 
         if (pipelineInput.sourceType === "midi_test" && pipelineInput.midiNotes.length === 0) {
           return;
         }
 
-        if (ACTIVE_INPUT_SOURCE === "external_transcription_results") {
+        if (activeInputModeSummary.externalTranscriptionSample !== null) {
           console.log("[TRANSCRIPTION] active sample", ACTIVE_TRANSCRIPTION_SAMPLE);
           console.log(
             "[TRANSCRIPTION] raw sample count",
@@ -807,21 +863,21 @@ export default function App() {
           console.log("[ADAPTER] midi note count", pipelineInput.midiNotes.length);
         }
 
-        if (pipelineInput.sourceType === "external_initial_events") {
+        if (activeInputModeSummary.externalInitialSample !== null) {
           console.log("[EXTERNAL] active sample", ACTIVE_EXTERNAL_SAMPLE);
-          console.log("[EXTERNAL] sample event count", pipelineInput.initialEvents.length);
+          console.log("[EXTERNAL] sample event count", activeExternalInitialEvents.length);
           console.log(
             "[EXTERNAL] sample distribution",
-            pipelineInput.initialEvents.reduce((acc, ev) => {
+            activeExternalInitialEvents.reduce((acc, ev) => {
               const key = `${ev.instrument}:${ev.articulation}`;
               acc[key] = (acc[key] || 0) + 1;
               return acc;
             }, {} as Record<string, number>)
           );
-          console.log("[ADAPTER] external initial event count", pipelineInput.initialEvents.length);
+          console.log("[ADAPTER] external initial event count", activeExternalInitialEvents.length);
           console.log(
             "[ADAPTER] external initial event sample",
-            pipelineInput.initialEvents.slice(0, 10)
+            activeExternalInitialEvents.slice(0, 10)
           );
         }
 
