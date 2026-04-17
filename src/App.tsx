@@ -1129,6 +1129,211 @@ function buildV1ArticulationReadiness(summary: {
   };
 }
 
+type FakeNotationPreviewLaneId =
+  | "CR"
+  | "RD"
+  | "HH"
+  | "HH_PEDAL"
+  | "TM_HIGH"
+  | "SD"
+  | "TM_MID"
+  | "TM_FLOOR"
+  | "BD";
+
+type FakeNotationPreviewEvent = {
+  stepIndex: number;
+  instrument: InitialDrumInstrument;
+  articulation: InitialDrumArticulation;
+};
+
+type FakeNotationPreviewSection = {
+  id: string;
+  title: string;
+  description: string;
+  events: FakeNotationPreviewEvent[];
+};
+
+const FAKE_NOTATION_PREVIEW_STEP_COUNT = 32;
+
+const FAKE_NOTATION_PREVIEW_LANES: Array<{
+  id: FakeNotationPreviewLaneId;
+  label: string;
+}> = [
+  { id: "CR", label: "Crash" },
+  { id: "RD", label: "Ride" },
+  { id: "HH", label: "HH" },
+  { id: "HH_PEDAL", label: "HH Pedal" },
+  { id: "TM_HIGH", label: "Tom High" },
+  { id: "SD", label: "Snare" },
+  { id: "TM_MID", label: "Tom Mid" },
+  { id: "TM_FLOOR", label: "Tom Floor" },
+  { id: "BD", label: "BD" },
+];
+
+function buildFakeNotationPreviewEvents(
+  entries: Array<{
+    instrument: InitialDrumInstrument;
+    articulation: InitialDrumArticulation;
+    steps: number[];
+  }>
+) {
+  return entries.flatMap((entry) =>
+    entry.steps.map((stepIndex) => ({
+      stepIndex,
+      instrument: entry.instrument,
+      articulation: entry.articulation,
+    }))
+  );
+}
+
+const FAKE_NOTATION_PREVIEW_CANVAS_HEIGHT = 224;
+
+const FAKE_NOTATION_PREVIEW_STAFF_LINE_POSITIONS = [56, 80, 104, 128, 152] as const;
+
+const FAKE_NOTATION_PREVIEW_LANE_POSITIONS: Record<FakeNotationPreviewLaneId, number> = {
+  CR: 18,
+  RD: 38,
+  HH: 56,
+  HH_PEDAL: 176,
+  TM_HIGH: 80,
+  SD: 104,
+  TM_MID: 128,
+  TM_FLOOR: 152,
+  BD: 198,
+};
+
+const FAKE_NOTATION_PREVIEW_KIT_HINT_ITEMS: Array<{
+  id: FakeNotationPreviewLaneId;
+  label: string;
+  left: string;
+  top: string;
+}> = [
+  { id: "CR", label: "Crash", left: "18%", top: "14%" },
+  { id: "HH", label: "HH", left: "34%", top: "20%" },
+  { id: "RD", label: "Ride", left: "70%", top: "16%" },
+  { id: "HH_PEDAL", label: "Ped", left: "18%", top: "72%" },
+  { id: "TM_HIGH", label: "T1", left: "60%", top: "38%" },
+  { id: "SD", label: "SD", left: "42%", top: "50%" },
+  { id: "TM_MID", label: "T2", left: "68%", top: "56%" },
+  { id: "TM_FLOOR", label: "FT", left: "78%", top: "74%" },
+  { id: "BD", label: "BD", left: "48%", top: "82%" },
+];
+
+function getFakeNotationPreviewTone(lane: FakeNotationPreviewLaneId) {
+  switch (lane) {
+    case "CR":
+      return {
+        ink: "#92400e",
+        accent: "#f59e0b",
+        soft: "rgba(245, 158, 11, 0.18)",
+        glow: "rgba(251, 191, 36, 0.24)",
+      };
+    case "RD":
+      return {
+        ink: "#4c1d95",
+        accent: "#8b5cf6",
+        soft: "rgba(139, 92, 246, 0.16)",
+        glow: "rgba(196, 181, 253, 0.24)",
+      };
+    case "HH":
+    case "HH_PEDAL":
+      return {
+        ink: "#1e3a8a",
+        accent: "#38bdf8",
+        soft: "rgba(56, 189, 248, 0.14)",
+        glow: "rgba(125, 211, 252, 0.22)",
+      };
+    case "SD":
+      return {
+        ink: "#7c2d12",
+        accent: "#fb923c",
+        soft: "rgba(251, 146, 60, 0.14)",
+        glow: "rgba(253, 186, 116, 0.2)",
+      };
+    case "BD":
+      return {
+        ink: "#166534",
+        accent: "#22c55e",
+        soft: "rgba(34, 197, 94, 0.14)",
+        glow: "rgba(134, 239, 172, 0.22)",
+      };
+    case "TM_HIGH":
+    case "TM_MID":
+    case "TM_FLOOR":
+      return {
+        ink: "#9f1239",
+        accent: "#f43f5e",
+        soft: "rgba(244, 63, 94, 0.12)",
+        glow: "rgba(253, 164, 175, 0.2)",
+      };
+    default:
+      return {
+        ink: "#334155",
+        accent: "#94a3b8",
+        soft: "rgba(148, 163, 184, 0.12)",
+        glow: "rgba(148, 163, 184, 0.18)",
+      };
+  }
+}
+
+function getFakeNotationPreviewVisualTop(lane: FakeNotationPreviewLaneId) {
+  return FAKE_NOTATION_PREVIEW_LANE_POSITIONS[lane];
+}
+
+function getFakeNotationPreviewStepLeftPercent(stepIndex: number) {
+  return ((stepIndex + 0.5) / FAKE_NOTATION_PREVIEW_STEP_COUNT) * 100;
+}
+
+const FAKE_NOTATION_PREVIEW_SECTIONS: FakeNotationPreviewSection[] = [
+  {
+    id: "basic_groove",
+    title: "Basic Groove",
+    description: "Closed hi-hat pulse with a minimal backbeat and bass drum anchor.",
+    events: buildFakeNotationPreviewEvents([
+      { instrument: "HH", articulation: "closed", steps: [0, 4, 8, 12, 16, 20, 24, 28] },
+      { instrument: "SD", articulation: "normal", steps: [8, 24] },
+      { instrument: "BD", articulation: "normal", steps: [0, 16] },
+    ]),
+  },
+  {
+    id: "hi_hat_articulation",
+    title: "Hi-Hat Articulation",
+    description: "One-bar groove showing closed, open, and pedal hi-hat behavior.",
+    events: buildFakeNotationPreviewEvents([
+      { instrument: "HH", articulation: "closed", steps: [0, 4, 8] },
+      { instrument: "HH", articulation: "open", steps: [12] },
+      { instrument: "HH", articulation: "pedal", steps: [20] },
+      { instrument: "SD", articulation: "normal", steps: [8, 24] },
+      { instrument: "BD", articulation: "normal", steps: [0, 16] },
+    ]),
+  },
+  {
+    id: "ride_crash_switch",
+    title: "Ride / Crash Switch",
+    description: "Opening crash into a ride-led groove without changing the backbeat.",
+    events: buildFakeNotationPreviewEvents([
+      { instrument: "CR", articulation: "normal", steps: [0] },
+      { instrument: "RD", articulation: "normal", steps: [4, 8, 12, 16, 20, 24, 28] },
+      { instrument: "SD", articulation: "normal", steps: [8, 24] },
+      { instrument: "BD", articulation: "normal", steps: [0, 16] },
+    ]),
+  },
+  {
+    id: "simple_fill",
+    title: "Simple Fill",
+    description: "Basic groove that opens into a short tom fill before the bar resolves.",
+    events: buildFakeNotationPreviewEvents([
+      { instrument: "HH", articulation: "closed", steps: [0, 4, 8, 12] },
+      { instrument: "SD", articulation: "normal", steps: [8] },
+      { instrument: "BD", articulation: "normal", steps: [0] },
+      { instrument: "TM_HIGH", articulation: "normal", steps: [20] },
+      { instrument: "TM_MID", articulation: "normal", steps: [24] },
+      { instrument: "TM_FLOOR", articulation: "normal", steps: [28] },
+      { instrument: "CR", articulation: "normal", steps: [0] },
+    ]),
+  },
+];
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -2754,6 +2959,17 @@ export default function App() {
   const metronomeDotBeat = metronomeDotActive
     ? ((Math.floor(visualCurrentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
     : 1;
+  const fakeNotationPreviewSections = FAKE_NOTATION_PREVIEW_SECTIONS;
+
+  useEffect(() => {
+    console.log(
+      "[FAKE-PREVIEW] notation-style v2",
+      fakeNotationPreviewSections.map((section) => ({
+        id: section.id,
+        eventCount: section.events.length,
+      }))
+    );
+  }, [fakeNotationPreviewSections]);
 
   useEffect(() => {
     console.log("[OUTPUT] score props summary", {
@@ -4123,6 +4339,53 @@ export default function App() {
           </div>
         </div>
 
+        <section
+          style={{
+            background: "linear-gradient(180deg, #151b25 0%, #10161f 100%)",
+            border: "1px solid #2b3444",
+            borderRadius: 18,
+            padding: 20,
+            display: "grid",
+            gap: 18,
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                letterSpacing: 0.2,
+              }}
+            >
+              Fake Notation Preview
+            </div>
+            <div
+              style={{
+                color: "#94a3b8",
+                fontSize: 13,
+                lineHeight: 1.6,
+                maxWidth: 760,
+              }}
+            >
+              Static hand-built preview cards for checking hierarchy, symbols, and
+              groove feel before any real notation rendering is wired into the product.
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+              gap: 16,
+            }}
+          >
+            {fakeNotationPreviewSections.map((section) => (
+              <FakeNotationPreviewCard key={section.id} section={section} />
+            ))}
+          </div>
+        </section>
+
         <ScoreViewWithMidiDebug
           notesByStep={notesByStep}
           duration={duration}
@@ -4163,6 +4426,575 @@ function InfoCard({ label, value }: { label: string; value: string }) {
     >
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+}
+
+function FakeNotationPreviewCard({
+  section,
+}: {
+  section: FakeNotationPreviewSection;
+}) {
+  const previewEvents = useMemo(
+    () =>
+      section.events
+        .map((event) => {
+          const lane = getV1NotationLane(event.instrument, event.articulation);
+
+          if (lane === "UNASSIGNED") {
+            return null;
+          }
+
+          return {
+            ...event,
+            lane,
+            top: getFakeNotationPreviewVisualTop(lane),
+            leftPercent: getFakeNotationPreviewStepLeftPercent(event.stepIndex),
+          };
+        })
+        .filter(
+          (
+            value
+          ): value is FakeNotationPreviewEvent & {
+            lane: FakeNotationPreviewLaneId;
+            top: number;
+            leftPercent: number;
+          } => value !== null
+        ),
+    [section.events]
+  );
+
+  const usedLaneIds = useMemo(
+    () => new Set(previewEvents.map((event) => event.lane)),
+    [previewEvents]
+  );
+
+  return (
+    <article
+      style={{
+        background: "linear-gradient(180deg, rgba(19, 24, 34, 0.98) 0%, rgba(13, 18, 27, 0.98) 100%)",
+        border: "1px solid rgba(71, 85, 105, 0.32)",
+        borderRadius: 18,
+        padding: 18,
+        display: "grid",
+        gap: 16,
+        boxShadow: "0 18px 36px rgba(2, 6, 23, 0.22)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>{section.title}</div>
+          <div style={{ color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+            {section.description}
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: "5px 10px",
+            borderRadius: 999,
+            background: "rgba(30, 41, 59, 0.72)",
+            border: "1px solid rgba(71, 85, 105, 0.35)",
+            color: "#94a3b8",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+            whiteSpace: "nowrap",
+          }}
+        >
+          2-bar preview
+        </div>
+      </div>
+
+      <div
+        style={{
+          background: "linear-gradient(180deg, #f6efdf 0%, #efe5d2 100%)",
+          border: "1px solid rgba(146, 120, 88, 0.4)",
+          borderRadius: 16,
+          padding: 14,
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "72px minmax(0, 1fr)",
+            gap: 12,
+            alignItems: "start",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              height: FAKE_NOTATION_PREVIEW_CANVAS_HEIGHT + 34,
+              paddingTop: 34,
+            }}
+          >
+            {FAKE_NOTATION_PREVIEW_LANES.map((lane) => {
+              const active = usedLaneIds.has(lane.id);
+
+              return (
+                <div
+                  key={lane.id}
+                  style={{
+                    position: "absolute",
+                    top: getFakeNotationPreviewVisualTop(lane.id) + 26,
+                    left: 0,
+                    transform: "translateY(-50%)",
+                    color: active ? "#4b5563" : "#9ca3af",
+                    fontSize: 11,
+                    fontWeight: active ? 700 : 600,
+                    letterSpacing: 0.2,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {lane.label}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <div
+              style={{
+                position: "relative",
+                height: 26,
+                color: "#7c6d56",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.2,
+              }}
+            >
+              {[0, 16].map((stepIndex, barIndex) => (
+                <div
+                  key={`bar-${stepIndex}`}
+                  style={{
+                    position: "absolute",
+                    left: `${(stepIndex / FAKE_NOTATION_PREVIEW_STEP_COUNT) * 100}%`,
+                    width: `${(16 / FAKE_NOTATION_PREVIEW_STEP_COUNT) * 100}%`,
+                    transform: barIndex === 0 ? "none" : "translateX(1px)",
+                    textAlign: "center",
+                  }}
+                >
+                  Bar {barIndex + 1}
+                </div>
+              ))}
+
+              {[0, 4, 8, 12, 16, 20, 24, 28].map((stepIndex) => (
+                <div
+                  key={`beat-${stepIndex}`}
+                  style={{
+                    position: "absolute",
+                    left: `${((stepIndex + 2) / FAKE_NOTATION_PREVIEW_STEP_COUNT) * 100}%`,
+                    top: 12,
+                    transform: "translateX(-50%)",
+                    color: "#8b7355",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {(stepIndex / 4) % 4 + 1}
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                position: "relative",
+                height: FAKE_NOTATION_PREVIEW_CANVAS_HEIGHT,
+              }}
+            >
+              {FAKE_NOTATION_PREVIEW_STAFF_LINE_POSITIONS.map((top, index) => (
+                <div
+                  key={`staff-line-${index}`}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top,
+                    height: 1.5,
+                    background: "rgba(82, 67, 47, 0.42)",
+                  }}
+                />
+              ))}
+
+              {[18, 176, 198].map((top, index) => (
+                <div
+                  key={`guide-${index}`}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top,
+                    height: 1,
+                    background: "rgba(120, 104, 82, 0.16)",
+                    borderTop: "1px dashed rgba(120, 104, 82, 0.24)",
+                  }}
+                />
+              ))}
+
+              {[0, 16, 32].map((stepIndex) => (
+                <div
+                  key={`barline-${stepIndex}`}
+                  style={{
+                    position: "absolute",
+                    top: 10,
+                    bottom: 10,
+                    left: `${(stepIndex / FAKE_NOTATION_PREVIEW_STEP_COUNT) * 100}%`,
+                    width: stepIndex === 0 || stepIndex === 32 ? 2 : 1.5,
+                    transform: stepIndex === 32 ? "translateX(-2px)" : "none",
+                    background: "rgba(82, 67, 47, 0.45)",
+                  }}
+                />
+              ))}
+
+              {[4, 8, 12, 20, 24, 28].map((stepIndex) => (
+                <div
+                  key={`beat-guide-${stepIndex}`}
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    bottom: 14,
+                    left: `${(stepIndex / FAKE_NOTATION_PREVIEW_STEP_COUNT) * 100}%`,
+                    borderLeft: "1px dashed rgba(120, 104, 82, 0.26)",
+                  }}
+                />
+              ))}
+
+              {previewEvents.map((event) => (
+                <div
+                  key={`${event.instrument}:${event.articulation}:${event.stepIndex}`}
+                  style={{
+                    position: "absolute",
+                    top: event.top,
+                    left: `${event.leftPercent}%`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <FakeNotationPreviewGlyph event={event} lane={event.lane} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              color: "#8b7355",
+              fontSize: 11,
+              lineHeight: 1.6,
+            }}
+          >
+            Static notation-style preview only. This card is intentionally detached from
+            the real score pipeline.
+          </div>
+
+          <FakeNotationPreviewKitHint usedLaneIds={usedLaneIds} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function FakeNotationPreviewGlyph({
+  event,
+  lane,
+}: {
+  event: FakeNotationPreviewEvent;
+  lane: FakeNotationPreviewLaneId;
+}) {
+  const tone = getFakeNotationPreviewTone(lane);
+  const isHiHatOpen = event.instrument === "HH" && event.articulation === "open";
+  const isHiHatPedal = event.instrument === "HH" && event.articulation === "pedal";
+  const isGhostSnare = event.instrument === "SD" && event.articulation === "ghost";
+  const isBassDrum = lane === "BD";
+  const isCymbalFamily = ["CR", "RD", "HH", "HH_PEDAL"].includes(lane);
+  const crossSize = lane === "CR" ? 16 : lane === "RD" ? 13 : 12;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: 28,
+        height: 28,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          inset: 6,
+          borderRadius: "50%",
+          background: tone.glow,
+          filter: "blur(6px)",
+          opacity: 0.9,
+        }}
+      />
+
+      {isCymbalFamily ? (
+        <>
+          <span
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: isHiHatPedal ? 8 : 5,
+              width: 1.5,
+              height: isHiHatPedal ? 10 : 18,
+              background: tone.ink,
+              transform: "translateX(-50%)",
+              borderRadius: 999,
+              opacity: 0.9,
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: isHiHatPedal ? "40%" : "50%",
+              width: crossSize,
+              height: 2,
+              background: tone.ink,
+              transform: "translate(-50%, -50%) rotate(45deg)",
+              borderRadius: 999,
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: isHiHatPedal ? "40%" : "50%",
+              width: crossSize,
+              height: 2,
+              background: tone.ink,
+              transform: "translate(-50%, -50%) rotate(-45deg)",
+              borderRadius: 999,
+            }}
+          />
+
+          {lane === "CR" ? (
+            <span
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: 2,
+                width: 18,
+                height: 1.5,
+                background: tone.accent,
+                transform: "translateX(-50%)",
+                borderRadius: 999,
+              }}
+            />
+          ) : null}
+
+          {lane === "RD" ? (
+            <span
+              style={{
+                position: "absolute",
+                top: 4,
+                right: 4,
+                width: 4,
+                height: 4,
+                borderRadius: "50%",
+                background: tone.accent,
+              }}
+            />
+          ) : null}
+
+          {isHiHatOpen ? (
+            <span
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 1,
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                border: `1.5px solid ${tone.accent}`,
+                background: "rgba(246, 239, 223, 0.88)",
+              }}
+            />
+          ) : null}
+
+          {isHiHatPedal ? (
+            <span
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: 0,
+                transform: "translateX(-50%)",
+                color: tone.ink,
+                fontSize: 7,
+                fontWeight: 800,
+                letterSpacing: 0.15,
+                textTransform: "uppercase",
+              }}
+            >
+              ped
+            </span>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {!isBassDrum ? (
+            <span
+              style={{
+                position: "absolute",
+                left: "61%",
+                top: 3,
+                width: 1.5,
+                height: 18,
+                background: tone.ink,
+                borderRadius: 999,
+              }}
+            />
+          ) : null}
+
+          <span
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: isBassDrum ? 18 : 14,
+              height: isBassDrum ? 12 : 10,
+              background: isGhostSnare ? "rgba(246, 239, 223, 0.9)" : tone.ink,
+              border: `1.5px solid ${tone.ink}`,
+              borderRadius: "50%",
+              boxShadow: `0 0 0 2px ${tone.soft}`,
+              transform: "translate(-50%, -50%) rotate(-18deg)",
+            }}
+          />
+
+          {lane === "TM_HIGH" || lane === "TM_MID" || lane === "TM_FLOOR" ? (
+            <span
+              style={{
+                position: "absolute",
+                top: 4,
+                right: 3,
+                width: 4,
+                height: 4,
+                borderRadius: "50%",
+                background: tone.accent,
+              }}
+            />
+          ) : null}
+
+          {isGhostSnare ? (
+            <span
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: 0,
+                transform: "translateX(-50%)",
+                color: tone.ink,
+                fontSize: 7,
+                fontWeight: 800,
+                letterSpacing: 0.1,
+              }}
+            >
+              g
+            </span>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FakeNotationPreviewKitHint({
+  usedLaneIds,
+}: {
+  usedLaneIds: Set<FakeNotationPreviewLaneId>;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+      <div
+        style={{
+          color: "#8b7355",
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+        }}
+      >
+        Kit Hint
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          width: 150,
+          height: 116,
+          borderRadius: 16,
+          background: "linear-gradient(180deg, rgba(255, 248, 235, 0.58) 0%, rgba(240, 230, 211, 0.82) 100%)",
+          border: "1px solid rgba(146, 120, 88, 0.28)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.52)",
+        }}
+      >
+        {FAKE_NOTATION_PREVIEW_KIT_HINT_ITEMS.map((item) => {
+          const active = usedLaneIds.has(item.id);
+          const tone = getFakeNotationPreviewTone(item.id);
+          const isBassDrum = item.id === "BD";
+
+          return (
+            <div
+              key={item.id}
+              style={{
+                position: "absolute",
+                left: item.left,
+                top: item.top,
+                transform: "translate(-50%, -50%)",
+                display: "grid",
+                justifyItems: "center",
+                gap: 3,
+              }}
+            >
+              <span
+                style={{
+                  width: isBassDrum ? 24 : 16,
+                  height: isBassDrum ? 19 : 16,
+                  borderRadius: "50%",
+                  background: active ? tone.soft : "rgba(148, 163, 184, 0.08)",
+                  border: `1.5px solid ${
+                    active ? tone.accent : "rgba(148, 163, 184, 0.26)"
+                  }`,
+                  boxShadow: active ? `0 0 0 2px ${tone.glow}` : "none",
+                }}
+              />
+              <span
+                style={{
+                  color: active ? tone.ink : "#94a3b8",
+                  fontSize: 8,
+                  fontWeight: 800,
+                  letterSpacing: 0.15,
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
