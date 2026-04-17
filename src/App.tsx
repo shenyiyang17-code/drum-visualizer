@@ -6,6 +6,12 @@ import {
   type ExternalInitialDrumEvent,
   type ExternalInitialSampleName,
 } from "./data/externalInitialEventSamples";
+import {
+  EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES,
+  type ExternalTranscriptionHit,
+  type ExternalTranscriptionInstrument,
+  type ExternalTranscriptionSampleName,
+} from "./data/externalTranscriptionResults";
 import drumDataRaw from "./drum_events.json";
 import {
   V3_ALLOWED_INSTRUMENTS,
@@ -56,7 +62,10 @@ type InitialDrumEvent = {
   velocity: number;
 };
 
-type InputSourceType = "midi_test" | "external_initial_events";
+type InputSourceType =
+  | "midi_test"
+  | "external_initial_events"
+  | "external_transcription_results";
 
 type PipelineInput =
   | {
@@ -409,6 +418,67 @@ function getActiveExternalInitialEvents(
   }));
 }
 
+function mapExternalTranscriptionInstrument(
+  instrument: ExternalTranscriptionInstrument
+): {
+  instrument: InitialDrumInstrument;
+  articulation: InitialDrumArticulation;
+} {
+  switch (instrument) {
+    case "kick":
+      return { instrument: "BD", articulation: "normal" };
+    case "snare":
+      return { instrument: "SD", articulation: "normal" };
+    case "hihat_closed":
+      return { instrument: "HH", articulation: "closed" };
+    case "hihat_open":
+      return { instrument: "HH", articulation: "open" };
+    case "hihat_pedal":
+      return { instrument: "HH", articulation: "pedal" };
+    case "crash":
+      return { instrument: "CR", articulation: "normal" };
+    case "ride":
+      return { instrument: "RD", articulation: "normal" };
+    case "tom_high":
+      return { instrument: "TM_HIGH", articulation: "normal" };
+    case "tom_mid":
+      return { instrument: "TM_MID", articulation: "normal" };
+    case "tom_floor":
+      return { instrument: "TM_FLOOR", articulation: "normal" };
+    default:
+      return { instrument: "UNMAPPED", articulation: "unknown" };
+  }
+}
+
+function buildInitialEventsFromExternalTranscriptionHits(
+  hits: ExternalTranscriptionHit[]
+): InitialDrumEvent[] {
+  return hits.map((hit) => {
+    const mapped = mapExternalTranscriptionInstrument(hit.instrument);
+    return {
+      time: hit.time,
+      instrument: mapped.instrument,
+      articulation: mapped.articulation,
+      velocity: hit.velocity,
+    };
+  });
+}
+
+function buildPipelineInputFromExternalTranscriptionSample(
+  sampleName: ExternalTranscriptionSampleName
+): PipelineInput {
+  const hits = EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES[sampleName];
+  const initialEvents = buildInitialEventsFromExternalTranscriptionHits(
+    hits.map((hit: ExternalTranscriptionHit) => ({
+      time: hit.time,
+      instrument: hit.instrument,
+      velocity: hit.velocity,
+    }))
+  );
+
+  return buildPipelineInputFromExternalInitialEvents(initialEvents);
+}
+
 void buildPipelineInputFromExternalInitialEvents;
 
 export default function App() {
@@ -588,11 +658,15 @@ export default function App() {
   // 可选：
   // "midi_test"
   // "external_initial_events"
-  const ACTIVE_INPUT_SOURCE: InputSourceType = "external_initial_events";
+  const ACTIVE_INPUT_SOURCE: InputSourceType = "external_transcription_results";
   // 可选：
   // "basic_groove"
   // "ride_groove"
   const ACTIVE_EXTERNAL_SAMPLE: ExternalInitialSampleName = "ride_groove";
+  // 可选：
+  // "basic_transcription"
+  // "ride_transcription"
+  const ACTIVE_TRANSCRIPTION_SAMPLE: ExternalTranscriptionSampleName = "ride_transcription";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -655,24 +729,51 @@ export default function App() {
 
         console.log("[MAP] unmapped raw notes sample", unmappedRawNotes);
 
-        const pipelineInputBySource: Record<InputSourceType, PipelineInput> = {
-          midi_test: {
-            sourceType: "midi_test",
-            midiNotes: (firstTrack?.notes ?? []).map((note) => ({
-              midi: note.midi,
-              time: note.time,
-              velocity: note.velocity,
-            })),
-          },
-          external_initial_events: buildPipelineInputFromExternalInitialEvents(
-            getActiveExternalInitialEvents(ACTIVE_EXTERNAL_SAMPLE)
-          ),
+        const buildActivePipelineInput = (sourceType: InputSourceType): PipelineInput => {
+          if (sourceType === "midi_test") {
+            return {
+              sourceType: "midi_test",
+              midiNotes: (firstTrack?.notes ?? []).map((note) => ({
+                midi: note.midi,
+                time: note.time,
+                velocity: note.velocity,
+              })),
+            };
+          }
+
+          if (sourceType === "external_initial_events") {
+            return buildPipelineInputFromExternalInitialEvents(
+              getActiveExternalInitialEvents(ACTIVE_EXTERNAL_SAMPLE)
+            );
+          }
+
+          return buildPipelineInputFromExternalTranscriptionSample(
+            ACTIVE_TRANSCRIPTION_SAMPLE
+          );
         };
 
-        const pipelineInput = pipelineInputBySource[ACTIVE_INPUT_SOURCE];
+        const pipelineInput = buildActivePipelineInput(ACTIVE_INPUT_SOURCE);
 
         if (pipelineInput.sourceType === "midi_test" && pipelineInput.midiNotes.length === 0) {
           return;
+        }
+
+        if (ACTIVE_INPUT_SOURCE === "external_transcription_results") {
+          console.log("[TRANSCRIPTION] active sample", ACTIVE_TRANSCRIPTION_SAMPLE);
+          console.log(
+            "[TRANSCRIPTION] raw sample count",
+            EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES[ACTIVE_TRANSCRIPTION_SAMPLE].length
+          );
+          console.log(
+            "[TRANSCRIPTION] raw sample distribution",
+            EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES[ACTIVE_TRANSCRIPTION_SAMPLE].reduce(
+              (acc, hit) => {
+                acc[hit.instrument] = (acc[hit.instrument] || 0) + 1;
+                return acc;
+              },
+              {} as Record<string, number>
+            )
+          );
         }
 
         const initialDrumEvents = buildPipelineInputToInitialEvents(pipelineInput);
