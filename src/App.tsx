@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Midi } from "@tonejs/midi";
 import ScoreView from "./components/ScoreView";
+import {
+  EXTERNAL_INITIAL_EVENT_SAMPLES,
+  type ExternalInitialDrumEvent,
+  type ExternalInitialSampleName,
+} from "./data/externalInitialEventSamples";
 import drumDataRaw from "./drum_events.json";
 import {
   V3_ALLOWED_INSTRUMENTS,
@@ -393,37 +398,10 @@ function buildPipelineInputFromExternalInitialEvents(
   };
 }
 
-const EXTERNAL_INITIAL_EVENT_SAMPLES = {
-  basic_groove: [
-    { time: 0.0, instrument: "BD", articulation: "normal", velocity: 0.9 },
-    { time: 0.0, instrument: "HH", articulation: "closed", velocity: 0.7 },
-    { time: 0.5, instrument: "HH", articulation: "closed", velocity: 0.7 },
-    { time: 1.0, instrument: "SD", articulation: "normal", velocity: 0.85 },
-    { time: 1.0, instrument: "HH", articulation: "closed", velocity: 0.7 },
-    { time: 1.5, instrument: "HH", articulation: "open", velocity: 0.72 },
-    { time: 2.0, instrument: "BD", articulation: "normal", velocity: 0.88 },
-    { time: 2.0, instrument: "HH", articulation: "closed", velocity: 0.68 },
-    { time: 3.0, instrument: "SD", articulation: "normal", velocity: 0.84 },
-    { time: 3.0, instrument: "CR", articulation: "normal", velocity: 0.8 },
-  ],
-  ride_groove: [
-    { time: 0.0, instrument: "BD", articulation: "normal", velocity: 0.9 },
-    { time: 0.0, instrument: "RD", articulation: "normal", velocity: 0.72 },
-    { time: 0.5, instrument: "RD", articulation: "normal", velocity: 0.72 },
-    { time: 1.0, instrument: "SD", articulation: "normal", velocity: 0.86 },
-    { time: 1.0, instrument: "RD", articulation: "normal", velocity: 0.72 },
-    { time: 1.5, instrument: "RD", articulation: "normal", velocity: 0.72 },
-    { time: 2.0, instrument: "BD", articulation: "normal", velocity: 0.88 },
-    { time: 2.0, instrument: "RD", articulation: "normal", velocity: 0.72 },
-    { time: 3.0, instrument: "SD", articulation: "normal", velocity: 0.84 },
-    { time: 3.0, instrument: "CR", articulation: "normal", velocity: 0.8 },
-  ],
-} as const;
-
 function getActiveExternalInitialEvents(
-  sampleName: keyof typeof EXTERNAL_INITIAL_EVENT_SAMPLES
+  sampleName: ExternalInitialSampleName
 ): InitialDrumEvent[] {
-  return EXTERNAL_INITIAL_EVENT_SAMPLES[sampleName].map((ev) => ({
+  return EXTERNAL_INITIAL_EVENT_SAMPLES[sampleName].map((ev: ExternalInitialDrumEvent) => ({
     time: ev.time,
     instrument: ev.instrument,
     articulation: ev.articulation,
@@ -614,7 +592,7 @@ export default function App() {
   // 可选：
   // "basic_groove"
   // "ride_groove"
-  const ACTIVE_EXTERNAL_SAMPLE = "ride_groove" as const;
+  const ACTIVE_EXTERNAL_SAMPLE: ExternalInitialSampleName = "ride_groove";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -626,6 +604,8 @@ export default function App() {
       console.log("[MAP-TEST] current midi file", activeMidiTestFile);
       console.log("[FLOW-TEST] active midi file", activeMidiTestFile);
       console.log("[ADAPTER] active input source", ACTIVE_INPUT_SOURCE);
+      console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
+      console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
 
       try {
         const response = await fetch(encodeURI(`/midi/${activeMidiTestFile}`));
