@@ -830,6 +830,32 @@ function summarizeUnknownLikeEvents(
   };
 }
 
+function buildV1PipelineContractSummary(params: {
+  inputCount: number;
+  finalCount: number;
+  hasUnknownInput: boolean;
+  hasUnknownFinal: boolean;
+  hasKick: boolean;
+  hasSnare: boolean;
+  hasHiHat: boolean;
+  hasCrash: boolean;
+  hasRide: boolean;
+}) {
+  return {
+    version: "v1",
+    supportsInitialDrumEvents: true,
+    preservesKnownCoreVoices: params.hasKick && params.hasSnare,
+    supportsHiHatFamily: params.hasHiHat,
+    supportsCrash: params.hasCrash,
+    supportsRide: params.hasRide,
+    acceptsUnknownInput: params.hasUnknownInput,
+    unknownMaySurviveToFinal: params.hasUnknownFinal,
+    pipelineProducesNonEmptyOutput: params.finalCount > 0,
+    inputCount: params.inputCount,
+    finalCount: params.finalCount,
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -2019,6 +2045,18 @@ export default function App() {
 
         const finalUnknownSummary = summarizeUnknownLikeEvents(finalScoreEvents);
 
+        const v1PipelineContractSummary = buildV1PipelineContractSummary({
+          inputCount: initialDrumEvents.length,
+          finalCount: finalScoreEvents.length,
+          hasUnknownInput: inputUnknownSummary.totalUnknownLikeCount > 0,
+          hasUnknownFinal: finalUnknownSummary.totalUnknownLikeCount > 0,
+          hasKick: finalScoreEvents.some((event) => event.instrument === "BD"),
+          hasSnare: finalScoreEvents.some((event) => event.instrument === "SD"),
+          hasHiHat: finalScoreEvents.some((event) => event.instrument === "HH"),
+          hasCrash: finalScoreEvents.some((event) => event.instrument === "CR"),
+          hasRide: finalScoreEvents.some((event) => event.instrument === "RD"),
+        });
+
         console.log("[BOUNDARY] final unknown summary", finalUnknownSummary);
         console.log("[BOUNDARY] unknown flow summary", {
           inputUnknownLikeCount: inputUnknownSummary.totalUnknownLikeCount,
@@ -2031,6 +2069,16 @@ export default function App() {
           unknownSurvivesToFinal: finalUnknownSummary.totalUnknownLikeCount > 0,
           pipelineStableWithUnknown:
             inputUnknownSummary.totalUnknownLikeCount > 0 && finalScoreEvents.length > 0,
+        });
+        console.log("[CONTRACT] v1 pipeline summary", v1PipelineContractSummary);
+        console.log("[CONTRACT] v1 sample conclusion", {
+          activeInputMode: ACTIVE_INPUT_MODE,
+          currentAudioVideoFile:
+            ACTIVE_INPUT_MODE === "audio_video_result_file"
+              ? ACTIVE_AUDIO_VIDEO_RESULT_FILE
+              : null,
+          outputStable: finalScoreEvents.length > 0,
+          unknownRetained: finalUnknownSummary.totalUnknownLikeCount > 0,
         });
 
         const simplifiedEvents: V3TempDrumEvent[] = finalScoreEvents;
