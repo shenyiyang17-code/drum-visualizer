@@ -89,6 +89,87 @@ function formatClockTime(value: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function quantizeToGrid(time: number, stepDuration: number) {
+  const stepIndex = Math.round(time / stepDuration);
+  return {
+    stepIndex,
+    quantizedTime: stepIndex * stepDuration,
+  };
+}
+
+function dedupeEventsByStepAndInstrument(events: V3TempDrumEvent[]) {
+  const seen = new Map<string, V3TempDrumEvent>();
+
+  for (const ev of events) {
+    const key = `${ev.stepIndex}:${ev.instrument}:${ev.articulation}`;
+
+    const prev = seen.get(key);
+    if (!prev) {
+      seen.set(key, ev);
+      continue;
+    }
+
+    if (ev.velocity > prev.velocity) {
+      seen.set(key, ev);
+    }
+  }
+
+  return Array.from(seen.values()).sort((a, b) => {
+    if (a.stepIndex !== b.stepIndex) return a.stepIndex - b.stepIndex;
+    return a.time - b.time;
+  });
+}
+
+function getLowValueNoiseCandidates(events: V3TempDrumEvent[]) {
+  return events.filter((ev) => {
+    if (ev.instrument === "UNMAPPED") return true;
+
+    if (ev.velocity <= 0.15) return true;
+
+    return false;
+  });
+}
+
+function filterSafeNoiseCandidates(events: V3TempDrumEvent[]) {
+  return events.filter((ev) => {
+    if (
+      ev.instrument === "SD" &&
+      ev.articulation === "normal" &&
+      ev.velocity <= 0.15
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function simplifyForPractice(events: V3TempDrumEvent[]) {
+  const hhLike = new Set(["HH"]);
+  const cymbalLike = new Set(["CR", "RD"]);
+
+  return events.filter((ev, index, arr) => {
+    if (ev.instrument === "BD" || ev.instrument === "SD") return true;
+
+    if (hhLike.has(ev.instrument) || cymbalLike.has(ev.instrument)) {
+      let prevSame: V3TempDrumEvent | null = null;
+
+      for (let i = index - 1; i >= 0; i -= 1) {
+        if (arr[i].instrument === ev.instrument) {
+          prevSame = arr[i];
+          break;
+        }
+      }
+
+      if (prevSame && ev.stepIndex - prevSame.stepIndex === 1) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
 function normalizeTrackName(input: string | undefined): TrackName | null {
   if (!input) return null;
   const v = input.toLowerCase();
@@ -300,11 +381,12 @@ export default function App() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [viewMode, setViewMode] = useState<"raw" | "practice">("practice");
   const [midiDrumEvents, setMidiDrumEvents] = useState<V3TempDrumEvent[]>([]);
+  const finalScoreEvents = midiDrumEvents;
   // V3 locked: score-language layer only
   const notesByStep = useMemo<V3StepNoteGroup[]>(() => {
     const grouped = new Map<number, V3TempDrumEvent[]>();
 
-    for (const note of midiDrumEvents) {
+    for (const note of finalScoreEvents) {
       const stepNotes = grouped.get(note.stepIndex);
       if (stepNotes) {
         stepNotes.push(note);
@@ -319,7 +401,51 @@ export default function App() {
         stepIndex,
         notes,
       }));
-  }, [midiDrumEvents]);
+  }, [finalScoreEvents]);
+
+  const notesByStepCheck = useMemo(
+    () =>
+      notesByStep.slice(0, 16).map((group) => ({
+        stepIndex: group.stepIndex,
+        count: group.notes.length,
+        inst: group.notes.map((n) => n.instrument),
+      })),
+    [notesByStep]
+  );
+
+  const notationStepSample = useMemo(
+    () =>
+      notesByStep.slice(0, 20).map((group) => ({
+        stepIndex: group.stepIndex,
+        instruments: group.notes.map((n) => `${n.instrument}:${n.articulation}`),
+        count: group.notes.length,
+      })),
+    [notesByStep]
+  );
+
+  const notationMultiHitSample = useMemo(
+    () =>
+      notesByStep
+        .filter((group) => group.notes.length > 1)
+        .slice(0, 20)
+        .map((group) => ({
+          stepIndex: group.stepIndex,
+          instruments: group.notes.map((n) => `${n.instrument}:${n.articulation}`),
+        })),
+    [notesByStep]
+  );
+
+  useEffect(() => {
+    console.log("[OUTPUT] notesByStep sample", notesByStepCheck);
+  }, [notesByStepCheck]);
+
+  useEffect(() => {
+    console.log("[NOTATION] step sample", notationStepSample);
+  }, [notationStepSample]);
+
+  useEffect(() => {
+    console.log("[NOTATION] multi-hit step sample", notationMultiHitSample);
+  }, [notationMultiHitSample]);
 
   console.log("[V5] notesByStep", notesByStep.slice(0, 10));
 
@@ -330,7 +456,7 @@ export default function App() {
       BD: new Set<number>(),
     };
 
-    for (const event of midiDrumEvents) {
+    for (const event of finalScoreEvents) {
       let track: TrackName | null = null;
 
       if (event.instrument === "HH") track = "HH";
@@ -345,20 +471,36 @@ export default function App() {
     }
 
     return map;
-  }, [midiDrumEvents, stepDuration, totalSteps]);
+  }, [finalScoreEvents, stepDuration, totalSteps]);
+
+  const MIDI_TEST_FILES = [
+    "test_basic.mid",
+    "080 Half-Time Pop Ride.mid",
+    "135 Motown Beat Ride.mid",
+    "135 Motown Beat Hat.mid",
+    "080 Ride (old).mid",
+  ] as const;
+
+  // 依次验证：
+  // 0 = test_basic.mid
+  // 1 = 080 Half-Time Pop Ride.mid
+  // 2 = 135 Motown Beat Ride.mid
+  // 3 = 135 Motown Beat Hat.mid
+  // 4 = 080 Ride (old).mid
+  const ACTIVE_MIDI_TEST_INDEX = 2;
+  const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
     let cancelled = false;
 
     const loadMidiPreview = async () => {
-      const currentMidiFile = "135 Motown Beat Ride.mid";
-
       console.log("[V4] loadMidiPreview START");
-      console.log("[V5] test file:", currentMidiFile);
-      console.log("[MAP-TEST] current midi file", currentMidiFile);
+      console.log("[V5] test file:", activeMidiTestFile);
+      console.log("[MAP-TEST] current midi file", activeMidiTestFile);
+      console.log("[FLOW-TEST] active midi file", activeMidiTestFile);
 
       try {
-        const response = await fetch("/midi/135 Motown Beat Ride.mid");
+        const response = await fetch(encodeURI(`/midi/${activeMidiTestFile}`));
         if (!response.ok) {
           console.error("[V4] fetch failed", response.status);
           throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
@@ -412,22 +554,120 @@ export default function App() {
         const normalizedV3DrumEvents: V3TempDrumEvent[] = allNotes
           .map((note) => {
             const mapped = mapMidiNoteToDrumInfo(note.midi);
-
-            const rawStep = note.time / stepDuration;
-            const si = Math.round(rawStep);
-            const quantizedTime = si * stepDuration;
-            const beatIndex = Math.floor(si / stepsPerBeat);
+            const { stepIndex, quantizedTime } = quantizeToGrid(note.time, stepDuration);
+            const beatIndex = Math.floor(stepIndex / stepsPerBeat);
+            const barIndex = Math.floor(beatIndex / beatsPerBar);
 
             return {
               time: quantizedTime,
-              stepIndex: si,
+              stepIndex,
               beatIndex,
-              barIndex: Math.floor(beatIndex / beatsPerBar),
+              barIndex,
               instrument: mapped?.instrument ?? "UNMAPPED",
               articulation: mapped?.articulation ?? "unknown",
               velocity: note.velocity,
             };
           });
+
+        const quantizedSample = normalizedV3DrumEvents.slice(0, 12).map((ev) => ({
+          instrument: ev.instrument,
+          articulation: ev.articulation,
+          time: ev.time,
+          stepIndex: ev.stepIndex,
+          beatIndex: ev.beatIndex,
+          barIndex: ev.barIndex,
+        }));
+
+        console.log("[GRID] quantized sample", quantizedSample);
+
+        const stepIndexSequence = normalizedV3DrumEvents.slice(0, 24).map((ev) => ev.stepIndex);
+        console.log("[GRID] first 24 step indexes", stepIndexSequence);
+
+        const invalidGridEvents = normalizedV3DrumEvents.filter(
+          (ev) =>
+            ev.stepIndex < 0 ||
+            ev.beatIndex < 0 ||
+            ev.barIndex < 0 ||
+            !Number.isInteger(ev.stepIndex) ||
+            !Number.isInteger(ev.beatIndex) ||
+            !Number.isInteger(ev.barIndex)
+        );
+
+        console.log("[GRID] invalid grid events", invalidGridEvents);
+
+        const uniqueStepCount = new Set(normalizedV3DrumEvents.map((ev) => ev.stepIndex)).size;
+        console.log("[GRID] unique step count", uniqueStepCount);
+
+        const groupedByStepForGridCheck = Array.from(
+          normalizedV3DrumEvents
+            .reduce((map, ev) => {
+              const arr = map.get(ev.stepIndex) ?? [];
+              arr.push(ev);
+              map.set(ev.stepIndex, arr);
+              return map;
+            }, new Map<number, V3TempDrumEvent[]>())
+            .entries()
+        ).sort((a, b) => a[0] - b[0]);
+
+        const groupedStepSample = groupedByStepForGridCheck.slice(0, 16).map(([step, events]) => ({
+          step,
+          inst: events.map((ev) => ev.instrument),
+          times: events.map((ev) => ev.time),
+        }));
+
+        console.log("[GRID-MERGE] grouped step sample", groupedStepSample);
+
+        const multiHitSteps = groupedByStepForGridCheck
+          .filter(([, events]) => events.length > 1)
+          .slice(0, 20)
+          .map(([step, events]) => ({
+            step,
+            inst: events.map((ev) => ev.instrument),
+            articulations: events.map((ev) => ev.articulation),
+            times: events.map((ev) => ev.time),
+          }));
+
+        console.log("[GRID-MERGE] multi-hit steps", multiHitSteps);
+
+        const comboCheck = {
+          bdSdSameStepCount: groupedByStepForGridCheck.filter(([, events]) => {
+            const set = new Set(events.map((ev) => ev.instrument));
+            return set.has("BD") && set.has("SD");
+          }).length,
+          bdHhSameStepCount: groupedByStepForGridCheck.filter(([, events]) => {
+            const set = new Set(events.map((ev) => ev.instrument));
+            return set.has("BD") && set.has("HH");
+          }).length,
+          sdHhSameStepCount: groupedByStepForGridCheck.filter(([, events]) => {
+            const set = new Set(events.map((ev) => ev.instrument));
+            return set.has("SD") && set.has("HH");
+          }).length,
+          bdCrSameStepCount: groupedByStepForGridCheck.filter(([, events]) => {
+            const set = new Set(events.map((ev) => ev.instrument));
+            return set.has("BD") && set.has("CR");
+          }).length,
+          bdRdSameStepCount: groupedByStepForGridCheck.filter(([, events]) => {
+            const set = new Set(events.map((ev) => ev.instrument));
+            return set.has("BD") && set.has("RD");
+          }).length,
+        };
+
+        console.log("[GRID-MERGE] combo check", comboCheck);
+
+        const sameStepSpreadSample = groupedByStepForGridCheck
+          .filter(([, events]) => events.length > 1)
+          .slice(0, 20)
+          .map(([step, events]) => {
+            const times = events.map((ev) => ev.time);
+            return {
+              step,
+              minTime: Math.min(...times),
+              maxTime: Math.max(...times),
+              spread: Math.max(...times) - Math.min(...times),
+            };
+          });
+
+        console.log("[GRID-MERGE] same-step spread sample", sameStepSpreadSample);
 
         console.log("[V4-2] mapped events", normalizedV3DrumEvents.length);
         console.log(
@@ -466,9 +706,14 @@ export default function App() {
           )
         );
         const coverageCheck = {
-          total: normalizedV3DrumEvents.length,
-          mapped: normalizedV3DrumEvents.filter((ev) => ev.instrument !== "UNMAPPED").length,
-          unmapped: normalizedV3DrumEvents.filter((ev) => ev.instrument === "UNMAPPED").length,
+          BD: mappedInstrumentSet.includes("BD"),
+          SD: mappedInstrumentSet.includes("SD"),
+          HH: mappedInstrumentSet.includes("HH"),
+          CR: mappedInstrumentSet.includes("CR"),
+          RD: mappedInstrumentSet.includes("RD"),
+          TM_HIGH: mappedInstrumentSet.includes("TM_HIGH"),
+          TM_MID: mappedInstrumentSet.includes("TM_MID"),
+          TM_FLOOR: mappedInstrumentSet.includes("TM_FLOOR"),
         };
         const coverageSummary = {
           core: {
@@ -493,25 +738,218 @@ export default function App() {
             ghost: mappedArticulationSet.includes("ghost"),
           },
         };
+        const missingCoverage = {
+          instruments: Object.entries(coverageCheck)
+            .filter(([, ok]) => !ok)
+            .map(([name]) => name),
+          articulations: Object.entries(coverageSummary.articulations)
+            .filter(([, ok]) => !ok)
+            .map(([name]) => name),
+        };
+        const unresolvedCoreCoverage = {
+          ghost: coverageSummary.articulations.ghost,
+          toms: {
+            TM_HIGH: coverageSummary.toms.TM_HIGH,
+            TM_MID: coverageSummary.toms.TM_MID,
+            TM_FLOOR: coverageSummary.toms.TM_FLOOR,
+          },
+        };
 
         console.log("[MAP-TEST] mapped instruments present", mappedInstrumentSet);
         console.log("[MAP-TEST] mapped articulations present", mappedArticulationSet);
         console.log("[MAP-TEST] coverage check", coverageCheck);
         console.log("[MAP-TEST] coverage summary", coverageSummary);
+        console.log("[MAP-TEST] missing coverage", missingCoverage);
+        console.log("[MAP-TEST] unresolved core coverage", unresolvedCoreCoverage);
 
-        const cleanedEvents: V3TempDrumEvent[] = [];
-        const stepMap = new Map<string, V3TempDrumEvent>();
+        const dedupedV3DrumEvents = dedupeEventsByStepAndInstrument(normalizedV3DrumEvents);
 
-        for (const e of normalizedV3DrumEvents) {
-          const key = `${e.stepIndex}-${e.instrument}`;
-          const existing = stepMap.get(key);
+        const dedupeStats = {
+          rawCount: normalizedV3DrumEvents.length,
+          dedupedCount: dedupedV3DrumEvents.length,
+          removedCount: normalizedV3DrumEvents.length - dedupedV3DrumEvents.length,
+        };
 
-          if (!existing || e.velocity > existing.velocity) {
-            stepMap.set(key, e);
-          }
-        }
+        console.log("[DENOISE] dedupe stats", dedupeStats);
 
-        cleanedEvents.push(...stepMap.values());
+        const duplicateBuckets = Array.from(
+          normalizedV3DrumEvents
+            .reduce((map, ev) => {
+              const key = `${ev.stepIndex}:${ev.instrument}:${ev.articulation}`;
+              const arr = map.get(key) ?? [];
+              arr.push(ev);
+              map.set(key, arr);
+              return map;
+            }, new Map<string, V3TempDrumEvent[]>())
+            .entries()
+        )
+          .filter(([, arr]) => arr.length > 1)
+          .slice(0, 20)
+          .map(([key, arr]) => ({
+            key,
+            count: arr.length,
+            velocities: arr.map((ev) => ev.velocity),
+            times: arr.map((ev) => ev.time),
+          }));
+
+        console.log("[DENOISE] duplicate buckets sample", duplicateBuckets);
+
+        console.log(
+          "[DENOISE] deduped sample",
+          dedupedV3DrumEvents.slice(0, 12).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+            velocity: ev.velocity,
+            time: ev.time,
+          }))
+        );
+
+        const lowValueNoiseCandidates = getLowValueNoiseCandidates(dedupedV3DrumEvents);
+
+        const noiseCandidateStats = {
+          dedupedCount: dedupedV3DrumEvents.length,
+          candidateCount: lowValueNoiseCandidates.length,
+        };
+
+        console.log("[DENOISE] noise candidate stats", noiseCandidateStats);
+
+        console.log(
+          "[DENOISE] noise candidate sample",
+          lowValueNoiseCandidates.slice(0, 20).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+            velocity: ev.velocity,
+            time: ev.time,
+          }))
+        );
+
+        const noiseCandidateByInstrument = lowValueNoiseCandidates.reduce((acc, ev) => {
+          acc[ev.instrument] = (acc[ev.instrument] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        console.log("[DENOISE] noise candidate by instrument", noiseCandidateByInstrument);
+
+        const safelyFilteredV3DrumEvents = filterSafeNoiseCandidates(dedupedV3DrumEvents);
+
+        const safeFilterStats = {
+          dedupedCount: dedupedV3DrumEvents.length,
+          filteredCount: safelyFilteredV3DrumEvents.length,
+          removedCount: dedupedV3DrumEvents.length - safelyFilteredV3DrumEvents.length,
+        };
+
+        console.log("[DENOISE] safe filter stats", safeFilterStats);
+
+        const safelyRemovedEvents = dedupedV3DrumEvents.filter((ev) => {
+          return !safelyFilteredV3DrumEvents.some(
+            (kept) =>
+              kept.stepIndex === ev.stepIndex &&
+              kept.instrument === ev.instrument &&
+              kept.articulation === ev.articulation &&
+              kept.time === ev.time &&
+              kept.velocity === ev.velocity
+          );
+        });
+
+        console.log(
+          "[DENOISE] safely removed sample",
+          safelyRemovedEvents.slice(0, 20).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+            velocity: ev.velocity,
+            time: ev.time,
+          }))
+        );
+
+        console.log(
+          "[DENOISE] safely filtered sample",
+          safelyFilteredV3DrumEvents.slice(0, 12).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+            velocity: ev.velocity,
+            time: ev.time,
+          }))
+        );
+
+        const practiceSimplifiedEvents = simplifyForPractice(safelyFilteredV3DrumEvents);
+
+        const simplifyStats = {
+          filteredCount: safelyFilteredV3DrumEvents.length,
+          simplifiedCount: practiceSimplifiedEvents.length,
+          removedCount: safelyFilteredV3DrumEvents.length - practiceSimplifiedEvents.length,
+        };
+
+        console.log("[SIMPLIFY] simplify stats", simplifyStats);
+
+        const simplifiedRemovedSample = safelyFilteredV3DrumEvents.filter((ev) => {
+          return !practiceSimplifiedEvents.some(
+            (kept) =>
+              kept.stepIndex === ev.stepIndex &&
+              kept.instrument === ev.instrument &&
+              kept.articulation === ev.articulation &&
+              kept.time === ev.time &&
+              kept.velocity === ev.velocity
+          );
+        });
+
+        console.log(
+          "[SIMPLIFY] removed sample",
+          simplifiedRemovedSample.slice(0, 20).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+            velocity: ev.velocity,
+            time: ev.time,
+          }))
+        );
+
+        const simplifiedRemovedByInstrument = simplifiedRemovedSample.reduce((acc, ev) => {
+          acc[ev.instrument] = (acc[ev.instrument] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        console.log("[SIMPLIFY] removed by instrument", simplifiedRemovedByInstrument);
+
+        const adjacentCymbalPairs = safelyFilteredV3DrumEvents
+          .map((ev, index, arr) => {
+            if (index === 0) return null;
+            const prev = arr[index - 1];
+            if (prev.instrument !== ev.instrument) return null;
+            if (!["HH", "CR", "RD"].includes(ev.instrument)) return null;
+
+            return {
+              instrument: ev.instrument,
+              prevStep: prev.stepIndex,
+              currentStep: ev.stepIndex,
+              gap: ev.stepIndex - prev.stepIndex,
+            };
+          })
+          .filter(
+            (
+              value
+            ): value is {
+              instrument: V3TempDrumEvent["instrument"];
+              prevStep: number;
+              currentStep: number;
+              gap: number;
+            } => value !== null
+          )
+          .slice(0, 30);
+
+        console.log("[SIMPLIFY] adjacent cymbal pairs", adjacentCymbalPairs);
+
+        const simplifiedInstrumentDistribution = practiceSimplifiedEvents.reduce((acc, ev) => {
+          acc[ev.instrument] = (acc[ev.instrument] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        console.log("[SIMPLIFY] instrument distribution", simplifiedInstrumentDistribution);
+
+        const cleanedEvents: V3TempDrumEvent[] = safelyFilteredV3DrumEvents;
 
         const grooveCoreSteps = new Set<number>();
 
@@ -527,41 +965,233 @@ export default function App() {
           "[V4-4] cleaned count",
           cleanedEvents.length,
           "raw",
-          normalizedV3DrumEvents.length
+          safelyFilteredV3DrumEvents.length
         );
 
-        const simplifiedEvents: V3TempDrumEvent[] = [];
+        const finalScoreEvents: V3TempDrumEvent[] = practiceSimplifiedEvents;
 
-        for (const e of cleanedEvents) {
-          if (e.instrument === "BD" || e.instrument === "SD") {
-            simplifiedEvents.push(e);
-            continue;
-          }
-
-          if (e.instrument === "HH") {
-            if (e.stepIndex % stepsPerBeat === 0) {
-              simplifiedEvents.push(e);
-            }
-            continue;
-          }
-
-          simplifiedEvents.push(e);
-        }
+        const simplifiedEvents: V3TempDrumEvent[] = finalScoreEvents;
 
         console.log(
           "[V4-6] simplified count",
           simplifiedEvents.length,
           "from",
-          cleanedEvents.length
+          practiceSimplifiedEvents.length
         );
 
-        const finalEvents = viewMode === "raw" ? cleanedEvents : simplifiedEvents;
+        console.log("[SIMPLIFY-FLOW] safe filtered count", safelyFilteredV3DrumEvents.length);
+        console.log("[SIMPLIFY-FLOW] practice simplified count", practiceSimplifiedEvents.length);
+        console.log("[SIMPLIFY-FLOW] final simplified count", simplifiedEvents.length);
 
-        console.log("[V4-7] mode", viewMode, "events", finalEvents.length);
+        const simplifyFlowCheck = {
+          safeFilteredCount: safelyFilteredV3DrumEvents.length,
+          practiceSimplifiedCount: practiceSimplifiedEvents.length,
+          finalCount:
+            typeof simplifiedEvents !== "undefined"
+              ? simplifiedEvents.length
+              : practiceSimplifiedEvents.length,
+        };
 
-        setMidiDrumEvents(finalEvents);
+        console.log("[SIMPLIFY-FLOW] check", simplifyFlowCheck);
 
-        const instrumentDistribution = finalEvents.reduce((acc, ev) => {
+        const flowSummary = {
+          rawMappedCount: normalizedV3DrumEvents.length,
+          dedupedCount: dedupedV3DrumEvents.length,
+          safelyFilteredCount: safelyFilteredV3DrumEvents.length,
+          practiceSimplifiedCount: practiceSimplifiedEvents.length,
+          finalScoreCount: finalScoreEvents.length,
+        };
+
+        console.log("[FLOW] summary", flowSummary);
+
+        const flowDelta = {
+          dedupeRemoved: normalizedV3DrumEvents.length - dedupedV3DrumEvents.length,
+          safeFilterRemoved: dedupedV3DrumEvents.length - safelyFilteredV3DrumEvents.length,
+          simplifyRemoved: safelyFilteredV3DrumEvents.length - practiceSimplifiedEvents.length,
+          finalRemoved: practiceSimplifiedEvents.length - finalScoreEvents.length,
+        };
+
+        console.log("[FLOW] delta", flowDelta);
+
+        const flowIntegrityCheck = {
+          finalEqualsPracticeSimplified:
+            finalScoreEvents.length === practiceSimplifiedEvents.length,
+          noUnexpectedGrowth:
+            dedupedV3DrumEvents.length <= normalizedV3DrumEvents.length &&
+            safelyFilteredV3DrumEvents.length <= dedupedV3DrumEvents.length &&
+            practiceSimplifiedEvents.length <= safelyFilteredV3DrumEvents.length &&
+            finalScoreEvents.length <= practiceSimplifiedEvents.length,
+        };
+
+        console.log("[FLOW] integrity check", flowIntegrityCheck);
+
+        console.log("[FLOW] stage sample", {
+          normalized: normalizedV3DrumEvents.slice(0, 6).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+          })),
+          deduped: dedupedV3DrumEvents.slice(0, 6).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+          })),
+          filtered: safelyFilteredV3DrumEvents.slice(0, 6).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+          })),
+          simplified: practiceSimplifiedEvents.slice(0, 6).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+          })),
+          final: finalScoreEvents.slice(0, 6).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+          })),
+        });
+
+        console.log(
+          "[OUTPUT] final score sample",
+          finalScoreEvents.slice(0, 16).map((ev) => ({
+            instrument: ev.instrument,
+            articulation: ev.articulation,
+            stepIndex: ev.stepIndex,
+            beatIndex: ev.beatIndex,
+            barIndex: ev.barIndex,
+            time: ev.time,
+            velocity: ev.velocity,
+          }))
+        );
+
+        const finalOutputIntegrity = {
+          count: finalScoreEvents.length,
+          invalidEvents: finalScoreEvents.filter(
+            (ev) =>
+              !ev.instrument ||
+              !ev.articulation ||
+              !Number.isInteger(ev.stepIndex) ||
+              !Number.isInteger(ev.beatIndex) ||
+              !Number.isInteger(ev.barIndex) ||
+              typeof ev.time !== "number" ||
+              typeof ev.velocity !== "number"
+          ).length,
+        };
+
+        console.log("[OUTPUT] integrity check", finalOutputIntegrity);
+
+        const finalOutputDistribution = finalScoreEvents.reduce((acc, ev) => {
+          const key = `${ev.instrument}:${ev.articulation}`;
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        console.log("[OUTPUT] distribution", finalOutputDistribution);
+
+        const notationRuleCheck = {
+          hasBD: finalScoreEvents.some((ev) => ev.instrument === "BD"),
+          hasSD: finalScoreEvents.some((ev) => ev.instrument === "SD"),
+          hasHH: finalScoreEvents.some((ev) => ev.instrument === "HH"),
+          hasCR: finalScoreEvents.some((ev) => ev.instrument === "CR"),
+          hasRD: finalScoreEvents.some((ev) => ev.instrument === "RD"),
+          hasTom: finalScoreEvents.some((ev) =>
+            ["TM_HIGH", "TM_MID", "TM_FLOOR"].includes(ev.instrument)
+          ),
+          hasClosedHH: finalScoreEvents.some(
+            (ev) => ev.instrument === "HH" && ev.articulation === "closed"
+          ),
+          hasOpenHH: finalScoreEvents.some(
+            (ev) => ev.instrument === "HH" && ev.articulation === "open"
+          ),
+          hasPedalHH: finalScoreEvents.some(
+            (ev) => ev.instrument === "HH" && ev.articulation === "pedal"
+          ),
+          hasGhostSD: finalScoreEvents.some(
+            (ev) => ev.instrument === "SD" && ev.articulation === "ghost"
+          ),
+        };
+
+        console.log("[NOTATION] rule coverage", notationRuleCheck);
+
+        const invalidNotationEvents = finalScoreEvents.filter((ev) => {
+          const validInstrument = [
+            "BD",
+            "SD",
+            "HH",
+            "CR",
+            "RD",
+            "TM_HIGH",
+            "TM_MID",
+            "TM_FLOOR",
+            "UNMAPPED",
+          ].includes(ev.instrument);
+
+          const validArticulation = [
+            "normal",
+            "closed",
+            "open",
+            "pedal",
+            "ghost",
+            "unknown",
+          ].includes(ev.articulation);
+
+          return !validInstrument || !validArticulation;
+        });
+
+        console.log("[NOTATION] invalid events", invalidNotationEvents);
+
+        const grooveSkeletonCheck = {
+          bdStepCount: new Set(
+            finalScoreEvents.filter((ev) => ev.instrument === "BD").map((ev) => ev.stepIndex)
+          ).size,
+          sdStepCount: new Set(
+            finalScoreEvents.filter((ev) => ev.instrument === "SD").map((ev) => ev.stepIndex)
+          ).size,
+          hhStepCount: new Set(
+            finalScoreEvents.filter((ev) => ev.instrument === "HH").map((ev) => ev.stepIndex)
+          ).size,
+        };
+
+        console.log("[NOTATION] groove skeleton check", grooveSkeletonCheck);
+
+        const crossSampleSummary = {
+          file: activeMidiTestFile,
+          rawMappedCount: normalizedV3DrumEvents.length,
+          dedupedCount: dedupedV3DrumEvents.length,
+          safelyFilteredCount: safelyFilteredV3DrumEvents.length,
+          practiceSimplifiedCount: practiceSimplifiedEvents.length,
+          finalScoreCount: finalScoreEvents.length,
+          invalidOutputCount: finalOutputIntegrity.invalidEvents,
+          hasBD: finalScoreEvents.some((ev) => ev.instrument === "BD"),
+          hasSD: finalScoreEvents.some((ev) => ev.instrument === "SD"),
+          hasHH: finalScoreEvents.some((ev) => ev.instrument === "HH"),
+          hasCR: finalScoreEvents.some((ev) => ev.instrument === "CR"),
+          hasRD: finalScoreEvents.some((ev) => ev.instrument === "RD"),
+        };
+
+        console.log("[FLOW-TEST] summary", crossSampleSummary);
+
+        const crossSampleFlowCheck = {
+          file: activeMidiTestFile,
+          finalEqualsPracticeSimplified:
+            finalScoreEvents.length === practiceSimplifiedEvents.length,
+          noUnexpectedGrowth:
+            dedupedV3DrumEvents.length <= normalizedV3DrumEvents.length &&
+            safelyFilteredV3DrumEvents.length <= dedupedV3DrumEvents.length &&
+            practiceSimplifiedEvents.length <= safelyFilteredV3DrumEvents.length &&
+            finalScoreEvents.length <= practiceSimplifiedEvents.length,
+          invalidOutputZero: finalOutputIntegrity.invalidEvents === 0,
+        };
+
+        console.log("[FLOW-TEST] integrity", crossSampleFlowCheck);
+
+        console.log("[V4-7] mode", viewMode, "events", finalScoreEvents.length);
+
+        setMidiDrumEvents(finalScoreEvents);
+
+        const instrumentDistribution = finalScoreEvents.reduce((acc, ev) => {
           acc[ev.instrument] = (acc[ev.instrument] ?? 0) + 1;
           return acc;
         }, Object.fromEntries(V3_ALLOWED_INSTRUMENTS.map((instrument) => [instrument, 0])) as Record<
@@ -569,7 +1199,7 @@ export default function App() {
           number
         >);
 
-        console.log("[MIDI V3] events count", finalEvents.length);
+        console.log("[MIDI V3] events count", finalScoreEvents.length);
         console.log("[MIDI V3] instrument distribution", instrumentDistribution);
         console.log("[MIDI V3] V3 locked");
       } catch (error) {
@@ -599,6 +1229,10 @@ export default function App() {
   const scoreSyncTime = clamp(visualCurrentTime - secondsPerBar, 0, duration);
   const scoreSyncStep = clamp(Math.round(scoreSyncTime / stepDuration), 0, totalSteps - 1);
   const scoreSyncBar = Math.floor(scoreSyncStep / barSteps);
+  const activeCymbal =
+    notesByStep
+      .find((group) => group.stepIndex === scoreSyncStep)
+      ?.notes.find((note) => ["HH", "CR", "RD"].includes(note.instrument))?.instrument ?? null;
   const playbackProgress = playbackDuration > 0 ? clamp(visualCurrentTime / playbackDuration, 0, 1) : 0;
   const scrubBarMarkers = useMemo(
     () => Array.from({ length: Math.max(bars, 1) }, (_, barIndex) => barIndex),
@@ -610,6 +1244,17 @@ export default function App() {
   const metronomeDotBeat = metronomeDotActive
     ? ((Math.floor(visualCurrentTime / secondsPerBeat) % beatsPerBar) + beatsPerBar) % beatsPerBar + 1
     : 1;
+
+  useEffect(() => {
+    console.log("[OUTPUT] score props summary", {
+      finalScoreEventCount: finalScoreEvents.length,
+      notesByStepCount: notesByStep.length,
+      currentStep: scoreSyncStep,
+      currentBar: scoreSyncBar,
+      hasLoop,
+      activeCymbal,
+    });
+  }, [activeCymbal, finalScoreEvents.length, hasLoop, notesByStep.length, scoreSyncBar, scoreSyncStep]);
 
   void stepMap;
 
