@@ -809,6 +809,27 @@ function validateAudioVideoResultFileEntry(fileEntry: unknown) {
   };
 }
 
+function summarizeUnknownLikeEvents(
+  events: Array<{ instrument: string; articulation: string; stepIndex?: number }>
+) {
+  const unknownEvents = events.filter(
+    (event) =>
+      event.instrument === "UNMAPPED" || event.articulation === "unknown"
+  );
+
+  return {
+    totalUnknownLikeCount: unknownEvents.length,
+    instrumentCounts: unknownEvents.reduce((acc, event) => {
+      acc[event.instrument] = (acc[event.instrument] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+    articulationCounts: unknownEvents.reduce((acc, event) => {
+      acc[event.articulation] = (acc[event.articulation] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -1561,6 +1582,10 @@ export default function App() {
           count: initialDrumEvents.length,
         });
 
+        const inputUnknownSummary = summarizeUnknownLikeEvents(initialDrumEvents);
+
+        console.log("[BOUNDARY] input unknown summary", inputUnknownSummary);
+
         if (initialDrumEvents.length === 0) {
           return;
         }
@@ -1776,6 +1801,10 @@ export default function App() {
 
         const dedupedV3DrumEvents = dedupeEventsByStepAndInstrument(normalizedV3DrumEvents);
 
+        const dedupedUnknownSummary = summarizeUnknownLikeEvents(dedupedV3DrumEvents);
+
+        console.log("[BOUNDARY] deduped unknown summary", dedupedUnknownSummary);
+
         const dedupeStats = {
           rawCount: normalizedV3DrumEvents.length,
           dedupedCount: dedupedV3DrumEvents.length,
@@ -1845,6 +1874,12 @@ export default function App() {
         console.log("[DENOISE] noise candidate by instrument", noiseCandidateByInstrument);
 
         const safelyFilteredV3DrumEvents = filterSafeNoiseCandidates(dedupedV3DrumEvents);
+
+        const filteredUnknownSummary = summarizeUnknownLikeEvents(
+          safelyFilteredV3DrumEvents
+        );
+
+        console.log("[BOUNDARY] filtered unknown summary", filteredUnknownSummary);
 
         const safeFilterStats = {
           dedupedCount: dedupedV3DrumEvents.length,
@@ -1981,6 +2016,22 @@ export default function App() {
         );
 
         const finalScoreEvents: V3TempDrumEvent[] = practiceSimplifiedEvents;
+
+        const finalUnknownSummary = summarizeUnknownLikeEvents(finalScoreEvents);
+
+        console.log("[BOUNDARY] final unknown summary", finalUnknownSummary);
+        console.log("[BOUNDARY] unknown flow summary", {
+          inputUnknownLikeCount: inputUnknownSummary.totalUnknownLikeCount,
+          dedupedUnknownLikeCount: dedupedUnknownSummary.totalUnknownLikeCount,
+          filteredUnknownLikeCount: filteredUnknownSummary.totalUnknownLikeCount,
+          finalUnknownLikeCount: finalUnknownSummary.totalUnknownLikeCount,
+        });
+        console.log("[BOUNDARY] v1 handling summary", {
+          unknownObserved: inputUnknownSummary.totalUnknownLikeCount > 0,
+          unknownSurvivesToFinal: finalUnknownSummary.totalUnknownLikeCount > 0,
+          pipelineStableWithUnknown:
+            inputUnknownSummary.totalUnknownLikeCount > 0 && finalScoreEvents.length > 0,
+        });
 
         const simplifiedEvents: V3TempDrumEvent[] = finalScoreEvents;
 
