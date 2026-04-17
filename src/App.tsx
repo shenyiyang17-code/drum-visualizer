@@ -762,6 +762,53 @@ function validateAudioVideoResultFileContentSample(
   };
 }
 
+function isValidAudioVideoResultFileFormat(
+  format: unknown
+): format is "audio_video_source_result" {
+  return format === "audio_video_source_result";
+}
+
+function validateAudioVideoResultFileEntry(fileEntry: unknown) {
+  if (!fileEntry || typeof fileEntry !== "object") {
+    return {
+      isValid: false,
+      reason: "file entry is not an object",
+      format: null,
+      hasContent: false,
+    };
+  }
+
+  const maybeEntry = fileEntry as {
+    format?: unknown;
+    content?: unknown;
+  };
+
+  if (!isValidAudioVideoResultFileFormat(maybeEntry.format)) {
+    return {
+      isValid: false,
+      reason: "invalid audio-video file format",
+      format: maybeEntry.format ?? null,
+      hasContent: false,
+    };
+  }
+
+  if (!maybeEntry.content || typeof maybeEntry.content !== "object") {
+    return {
+      isValid: false,
+      reason: "missing file content object",
+      format: maybeEntry.format,
+      hasContent: false,
+    };
+  }
+
+  return {
+    isValid: true,
+    reason: null,
+    format: maybeEntry.format,
+    hasContent: true,
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -806,6 +853,14 @@ function buildPipelineInputFromAudioVideoResultFile(
   fileName: AudioVideoResultFileName
 ): PipelineInput {
   const fileEntry: AudioVideoResultFileEntry = AUDIO_VIDEO_RESULT_FILES[fileName];
+  const fileValidation = validateAudioVideoResultFileEntry(fileEntry);
+
+  console.log("[AV-FILE] validation", fileValidation);
+
+  if (!fileValidation.isValid) {
+    return buildPipelineInputFromExternalInitialEvents([]);
+  }
+
   return buildPipelineInputFromAudioVideoSourceResultObject(fileEntry.content);
 }
 
@@ -1228,6 +1283,7 @@ export default function App() {
       }
       if (activeInputModeSummary.audioVideoResultFile !== null) {
         const activeFileEntry = AUDIO_VIDEO_RESULT_FILES[ACTIVE_AUDIO_VIDEO_RESULT_FILE];
+        const fileValidation = validateAudioVideoResultFileEntry(activeFileEntry);
         const fileContentValidation =
           validateAudioVideoResultFileContentSample(activeFileEntry);
 
@@ -1251,6 +1307,13 @@ export default function App() {
             return acc;
           }, {} as Record<string, number>)
         );
+        console.log("[AV-FILE] validation summary", {
+          activeFile: ACTIVE_AUDIO_VIDEO_RESULT_FILE,
+          fileFormat: activeFileEntry.format,
+          fileIsValid: fileValidation.isValid,
+          contentInvalidItemCount: fileContentValidation.invalidItemCount,
+          sourceKind: activeFileEntry.content.sourceKind,
+        });
       }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
       console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
