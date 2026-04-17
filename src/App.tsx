@@ -96,6 +96,11 @@ type ActiveInputModeSummary = {
 
 type ExternalResultFileContentItem = ExternalInitialDrumEvent | ExternalTranscriptionHit;
 
+type ResolvedExternalResultFileEntry = {
+  format: ExternalResultFileEntry["format"];
+  content: ExternalResultFileContentItem[];
+};
+
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
 
 type DrumDataShape =
@@ -508,10 +513,102 @@ function buildPipelineInputFromExternalTranscriptionSample(
   return buildPipelineInputFromExternalInitialEvents(initialEvents);
 }
 
+function isValidExternalResultFileFormat(
+  format: unknown
+): format is "external_initial_events" | "external_transcription_results" {
+  return (
+    format === "external_initial_events" ||
+    format === "external_transcription_results"
+  );
+}
+
+function validateExternalResultFileEntry(fileEntry: unknown) {
+  if (!fileEntry || typeof fileEntry !== "object") {
+    return {
+      isValid: false,
+      reason: "file entry is not an object",
+      format: null,
+      contentCount: 0,
+    };
+  }
+
+  const maybeEntry = fileEntry as {
+    format?: unknown;
+    content?: unknown;
+  };
+
+  if (!isValidExternalResultFileFormat(maybeEntry.format)) {
+    return {
+      isValid: false,
+      reason: "invalid file format",
+      format: maybeEntry.format ?? null,
+      contentCount: 0,
+    };
+  }
+
+  if (!Array.isArray(maybeEntry.content)) {
+    return {
+      isValid: false,
+      reason: "content is not an array",
+      format: maybeEntry.format,
+      contentCount: 0,
+    };
+  }
+
+  return {
+    isValid: true,
+    reason: null,
+    format: maybeEntry.format,
+    contentCount: maybeEntry.content.length,
+  };
+}
+
+function validateExternalResultFileContentSample(
+  fileEntry: ResolvedExternalResultFileEntry
+) {
+  const sample = fileEntry.content.slice(0, 10);
+
+  const invalidItemCount = sample.filter((item) => {
+    if (!item || typeof item !== "object") return true;
+
+    const maybeItem = item as Record<string, unknown>;
+
+    return (
+      typeof maybeItem.time !== "number" ||
+      typeof maybeItem.velocity !== "number" ||
+      typeof maybeItem.instrument !== "string"
+    );
+  }).length;
+
+  return {
+    checkedCount: sample.length,
+    invalidItemCount,
+  };
+}
+
+function resolveExternalResultFileEntry(
+  fileName: ExternalResultFileName
+): ResolvedExternalResultFileEntry {
+  const fileEntry: ExternalResultFileEntry = EXTERNAL_RESULT_FILES[fileName];
+
+  return {
+    format: fileEntry.format,
+    content: getExternalResultFileContent(fileName),
+  };
+}
+
 function buildPipelineInputFromExternalResultFile(
   fileName: ExternalResultFileName
 ): PipelineInput {
   const fileEntry: ExternalResultFileEntry = EXTERNAL_RESULT_FILES[fileName];
+  const resolvedFileEntry = resolveExternalResultFileEntry(fileName);
+  const fileValidation = validateExternalResultFileEntry(resolvedFileEntry);
+
+  console.log("[RESULT-FILE] validation", fileValidation);
+
+  if (!fileValidation.isValid) {
+    return buildPipelineInputFromExternalInitialEvents([]);
+  }
 
   if (fileEntry.format === "external_transcription_results") {
     return buildPipelineInputFromExternalTranscriptionSample(fileEntry.sampleName);
@@ -810,18 +907,31 @@ export default function App() {
       if (ACTIVE_INPUT_MODE === "external_result_file") {
         const activeExternalResultFileEntry =
           EXTERNAL_RESULT_FILES[ACTIVE_EXTERNAL_RESULT_FILE];
-        const activeExternalResultContent = getExternalResultFileContent(
+        const activeResolvedExternalResultFileEntry = resolveExternalResultFileEntry(
           ACTIVE_EXTERNAL_RESULT_FILE
+        );
+        const contentSampleValidation = validateExternalResultFileContentSample(
+          activeResolvedExternalResultFileEntry
         );
 
         console.log("[RESULT-FILE] active file", ACTIVE_EXTERNAL_RESULT_FILE);
         console.log("[RESULT-FILE] file entry", activeExternalResultFileEntry);
         console.log("[RESULT-FILE] file source", "src/data/externalResultFiles.ts");
-        console.log("[RESULT-FILE] content format", activeExternalResultFileEntry.format);
-        console.log("[RESULT-FILE] content count", activeExternalResultContent.length);
+        console.log(
+          "[RESULT-FILE] content format",
+          activeResolvedExternalResultFileEntry.format
+        );
+        console.log(
+          "[RESULT-FILE] content count",
+          activeResolvedExternalResultFileEntry.content.length
+        );
         console.log(
           "[RESULT-FILE] content sample",
-          activeExternalResultContent.slice(0, 10)
+          activeResolvedExternalResultFileEntry.content.slice(0, 10)
+        );
+        console.log(
+          "[RESULT-FILE] content sample validation",
+          contentSampleValidation
         );
       }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
@@ -981,6 +1091,14 @@ export default function App() {
         };
 
         console.log("[ADAPTER] integrity", adapterIntegrityCheck);
+
+        if (ACTIVE_INPUT_MODE === "external_result_file") {
+          console.log("[RESULT-FILE] pipeline entry summary", {
+            activeFile: ACTIVE_EXTERNAL_RESULT_FILE,
+            pipelineSourceType: pipelineInput.sourceType,
+            initialEventCount: initialDrumEvents.length,
+          });
+        }
 
         console.log("[INPUT] initial drum event sample", initialDrumEvents.slice(0, 12));
 
