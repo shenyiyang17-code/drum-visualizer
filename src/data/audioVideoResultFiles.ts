@@ -37,6 +37,23 @@ export const AUDIO_VIDEO_RESULT_FILES = {
         })),
     },
   },
+  demo_video_file_result_loose: {
+    format: "audio_video_source_result",
+    content: {
+      sourceName: AUDIO_VIDEO_SOURCE_RESULTS.demo_video_result_loose.sourceName,
+      sourceKind: AUDIO_VIDEO_SOURCE_RESULTS.demo_video_result_loose.sourceKind,
+      transcriptionFormat:
+        AUDIO_VIDEO_SOURCE_RESULTS.demo_video_result_loose.transcriptionFormat,
+      transcriptionContent:
+        AUDIO_VIDEO_SOURCE_RESULTS.demo_video_result_loose.transcriptionContent.map(
+          (hit) => ({
+            time: hit.time,
+            instrument: hit.instrument,
+            velocity: hit.velocity,
+          })
+        ),
+    },
+  },
 } satisfies Record<string, AudioVideoResultFileEntry>;
 
 export type AudioVideoResultFileName = keyof typeof AUDIO_VIDEO_RESULT_FILES;

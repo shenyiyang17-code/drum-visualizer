@@ -59,6 +59,23 @@ export const AUDIO_VIDEO_SOURCE_RESULTS = {
       { time: 3.0, instrument: "crash", velocity: 0.8 },
     ],
   },
+  demo_video_result_loose: {
+    sourceName: "demo_song_loose.mp4",
+    sourceKind: "video_file",
+    transcriptionFormat: "external_transcription_results",
+    transcriptionContent: [
+      { time: 0.0, instrument: "kick", velocity: 0.88 },
+      { time: 0.0, instrument: "hihat_closed", velocity: 0.63 },
+      { time: 0.5, instrument: "unknown", velocity: 0.38 },
+      { time: 1.0, instrument: "snare", velocity: 0.81 },
+      { time: 1.0, instrument: "hihat_closed", velocity: 0.61 },
+      { time: 1.5, instrument: "hihat_open", velocity: 0.58 },
+      { time: 2.0, instrument: "kick", velocity: 0.85 },
+      { time: 2.5, instrument: "unknown", velocity: 0.33 },
+      { time: 3.0, instrument: "snare", velocity: 0.83 },
+      { time: 3.0, instrument: "crash", velocity: 0.76 },
+    ],
+  },
 } as const;
 
 export type AudioVideoSourceResultName = keyof typeof AUDIO_VIDEO_SOURCE_RESULTS;

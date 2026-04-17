@@ -1172,8 +1172,9 @@ export default function App() {
   // 可选：
   // "demo_audio_file_result"
   // "demo_video_file_result"
+  // "demo_video_file_result_loose"
   const ACTIVE_AUDIO_VIDEO_RESULT_FILE: AudioVideoResultFileName =
-    "demo_video_file_result";
+    "demo_video_file_result_loose";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -1286,6 +1287,13 @@ export default function App() {
         const fileValidation = validateAudioVideoResultFileEntry(activeFileEntry);
         const fileContentValidation =
           validateAudioVideoResultFileContentSample(activeFileEntry);
+        const contentDistribution = activeFileEntry.content.transcriptionContent.reduce(
+          (acc, hit) => {
+            acc[hit.instrument] = (acc[hit.instrument] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>
+        );
 
         console.log("[AV-FILE] active file", ACTIVE_AUDIO_VIDEO_RESULT_FILE);
         console.log("[AV-FILE] file entry", activeFileEntry);
@@ -1302,11 +1310,15 @@ export default function App() {
         );
         console.log(
           "[AV-FILE] content transcription distribution",
-          activeFileEntry.content.transcriptionContent.reduce((acc, hit) => {
-            acc[hit.instrument] = (acc[hit.instrument] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>)
+          contentDistribution
         );
+        console.log("[AV-FILE] loose coverage summary", {
+          hasKick: Boolean(contentDistribution.kick),
+          hasSnare: Boolean(contentDistribution.snare),
+          hasCrash: Boolean(contentDistribution.crash),
+          hasUnknown: Boolean(contentDistribution.unknown),
+          totalKinds: Object.keys(contentDistribution).length,
+        });
         console.log("[AV-FILE] validation summary", {
           activeFile: ACTIVE_AUDIO_VIDEO_RESULT_FILE,
           fileFormat: activeFileEntry.format,
