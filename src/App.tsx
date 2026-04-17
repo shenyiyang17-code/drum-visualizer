@@ -856,6 +856,44 @@ function buildV1PipelineContractSummary(params: {
   };
 }
 
+function buildV1DeliveryBoundarySummary(params: {
+  hasKick: boolean;
+  hasSnare: boolean;
+  hasHiHat: boolean;
+  hasCrash: boolean;
+  hasRide: boolean;
+  hasUnknownInput: boolean;
+  hasUnknownFinal: boolean;
+  outputStable: boolean;
+}) {
+  return {
+    version: "v1",
+    supportedInputs: [
+      "InitialDrumEvent[]",
+      "audio_video_source_result",
+      "audio_video_result_file",
+    ],
+    stableCoreVoices: {
+      kick: params.hasKick,
+      snare: params.hasSnare,
+      hihat: params.hasHiHat,
+      crash: params.hasCrash,
+      ride: params.hasRide,
+    },
+    acceptedCurrentBehavior: {
+      acceptsUnknownInput: params.hasUnknownInput,
+      mayRetainUnknownToFinal: params.hasUnknownFinal,
+      producesStableOutput: params.outputStable,
+    },
+    notHandledInV1: [
+      "automatic unknown cleanup",
+      "semantic remapping of unknown hits",
+      "advanced transcription repair",
+      "real upload parsing UI",
+    ],
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -2057,6 +2095,17 @@ export default function App() {
           hasRide: finalScoreEvents.some((event) => event.instrument === "RD"),
         });
 
+        const v1DeliveryBoundarySummary = buildV1DeliveryBoundarySummary({
+          hasKick: finalScoreEvents.some((event) => event.instrument === "BD"),
+          hasSnare: finalScoreEvents.some((event) => event.instrument === "SD"),
+          hasHiHat: finalScoreEvents.some((event) => event.instrument === "HH"),
+          hasCrash: finalScoreEvents.some((event) => event.instrument === "CR"),
+          hasRide: finalScoreEvents.some((event) => event.instrument === "RD"),
+          hasUnknownInput: inputUnknownSummary.totalUnknownLikeCount > 0,
+          hasUnknownFinal: finalUnknownSummary.totalUnknownLikeCount > 0,
+          outputStable: finalScoreEvents.length > 0,
+        });
+
         console.log("[BOUNDARY] final unknown summary", finalUnknownSummary);
         console.log("[BOUNDARY] unknown flow summary", {
           inputUnknownLikeCount: inputUnknownSummary.totalUnknownLikeCount,
@@ -2079,6 +2128,18 @@ export default function App() {
               : null,
           outputStable: finalScoreEvents.length > 0,
           unknownRetained: finalUnknownSummary.totalUnknownLikeCount > 0,
+        });
+        console.log("[DELIVERY] v1 boundary summary", v1DeliveryBoundarySummary);
+        console.log("[DELIVERY] v1 sample readiness", {
+          activeInputMode: ACTIVE_INPUT_MODE,
+          currentAudioVideoFile:
+            ACTIVE_INPUT_MODE === "audio_video_result_file"
+              ? ACTIVE_AUDIO_VIDEO_RESULT_FILE
+              : null,
+          stableOutput: finalScoreEvents.length > 0,
+          keepsUnknownInCurrentVersion:
+            finalUnknownSummary.totalUnknownLikeCount > 0,
+          readyForV1Scope: finalScoreEvents.length > 0,
         });
 
         const simplifiedEvents: V3TempDrumEvent[] = finalScoreEvents;
