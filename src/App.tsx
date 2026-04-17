@@ -23,6 +23,11 @@ import {
   type AudioVideoSourceResult,
   type AudioVideoSourceResultName,
 } from "./data/audioVideoSourceResults";
+import {
+  AUDIO_VIDEO_RESULT_FILES,
+  type AudioVideoResultFileEntry,
+  type AudioVideoResultFileName,
+} from "./data/audioVideoResultFiles";
 import drumDataRaw from "./drum_events.json";
 import {
   V3_ALLOWED_INSTRUMENTS,
@@ -80,7 +85,8 @@ type InputMode =
   | "external_initial_events"
   | "external_transcription_results"
   | "external_result_file"
-  | "audio_video_source_result";
+  | "audio_video_source_result"
+  | "audio_video_result_file";
 
 type PipelineInput =
   | {
@@ -99,6 +105,7 @@ type ActiveInputModeSummary = {
   externalTranscriptionSample: string | null;
   externalResultFile: string | null;
   audioVideoSourceResult: string | null;
+  audioVideoResultFile: string | null;
 };
 
 type ExternalResultFileContentItem = ExternalInitialDrumEvent | ExternalTranscriptionHit;
@@ -731,18 +738,56 @@ function validateAudioVideoTranscriptionContentSample(
   };
 }
 
-function buildPipelineInputFromAudioVideoSourceResult(
-  resultName: AudioVideoSourceResultName
+function validateAudioVideoResultFileContentSample(
+  fileEntry: AudioVideoResultFileEntry
+) {
+  const content = fileEntry.content;
+  const sample = content.transcriptionContent.slice(0, 10);
+
+  const invalidItemCount = sample.filter((item) => {
+    if (!item || typeof item !== "object") return true;
+
+    const maybeItem = item as Record<string, unknown>;
+
+    return (
+      typeof maybeItem.time !== "number" ||
+      typeof maybeItem.velocity !== "number" ||
+      typeof maybeItem.instrument !== "string"
+    );
+  }).length;
+
+  return {
+    checkedCount: sample.length,
+    invalidItemCount,
+  };
+}
+
+function buildPipelineInputFromAudioVideoSourceResultObject(
+  result: AudioVideoSourceResult
 ): PipelineInput {
-  const result = AUDIO_VIDEO_SOURCE_RESULTS[resultName];
   const sourceValidation = validateAudioVideoSourceResult(result);
 
-  console.log("[AV-SOURCE] validation", sourceValidation);
+  console.log("[AV-FILE] source validation", sourceValidation);
 
   if (!sourceValidation.isValid) {
     return buildPipelineInputFromExternalInitialEvents([]);
   }
 
+  const initialEvents = buildInitialEventsFromExternalTranscriptionHits(
+    result.transcriptionContent.map((hit) => ({
+      time: hit.time,
+      instrument: hit.instrument,
+      velocity: hit.velocity,
+    }))
+  );
+
+  return buildPipelineInputFromExternalInitialEvents(initialEvents);
+}
+
+function buildPipelineInputFromAudioVideoSourceResult(
+  resultName: AudioVideoSourceResultName
+): PipelineInput {
+  const result = AUDIO_VIDEO_SOURCE_RESULTS[resultName];
   const normalizedResult: AudioVideoSourceResult = {
     sourceName: result.sourceName,
     sourceKind: result.sourceKind,
@@ -754,15 +799,14 @@ function buildPipelineInputFromAudioVideoSourceResult(
     })),
   };
 
-  const initialEvents = buildInitialEventsFromExternalTranscriptionHits(
-    normalizedResult.transcriptionContent.map((hit) => ({
-      time: hit.time,
-      instrument: hit.instrument,
-      velocity: hit.velocity,
-    }))
-  );
+  return buildPipelineInputFromAudioVideoSourceResultObject(normalizedResult);
+}
 
-  return buildPipelineInputFromExternalInitialEvents(initialEvents);
+function buildPipelineInputFromAudioVideoResultFile(
+  fileName: AudioVideoResultFileName
+): PipelineInput {
+  const fileEntry: AudioVideoResultFileEntry = AUDIO_VIDEO_RESULT_FILES[fileName];
+  return buildPipelineInputFromAudioVideoSourceResultObject(fileEntry.content);
 }
 
 function buildAudioVideoSourceKindCoverageCheck(
@@ -802,6 +846,7 @@ function buildActiveInputModeSummary(params: {
   activeTranscriptionSample: string;
   activeExternalResultFile: string;
   activeAudioVideoSourceResult: string;
+  activeAudioVideoResultFile: string;
 }): ActiveInputModeSummary {
   return {
     mode: params.mode,
@@ -818,6 +863,10 @@ function buildActiveInputModeSummary(params: {
       params.mode === "audio_video_source_result"
         ? params.activeAudioVideoSourceResult
         : null,
+    audioVideoResultFile:
+      params.mode === "audio_video_result_file"
+        ? params.activeAudioVideoResultFile
+        : null,
   };
 }
 
@@ -828,6 +877,7 @@ function buildPipelineInputFromActiveMode(params: {
   activeTranscriptionSample: ExternalTranscriptionSampleName;
   activeExternalResultFile: ExternalResultFileName;
   activeAudioVideoSourceResult: AudioVideoSourceResultName;
+  activeAudioVideoResultFile: AudioVideoResultFileName;
 }): PipelineInput {
   if (params.mode === "midi_test") {
     return {
@@ -852,8 +902,14 @@ function buildPipelineInputFromActiveMode(params: {
     return buildPipelineInputFromExternalResultFile(params.activeExternalResultFile);
   }
 
-  return buildPipelineInputFromAudioVideoSourceResult(
-    params.activeAudioVideoSourceResult
+  if (params.mode === "audio_video_source_result") {
+    return buildPipelineInputFromAudioVideoSourceResult(
+      params.activeAudioVideoSourceResult
+    );
+  }
+
+  return buildPipelineInputFromAudioVideoResultFile(
+    params.activeAudioVideoResultFile
   );
 }
 
@@ -1039,7 +1095,8 @@ export default function App() {
   // "external_transcription_results"
   // "external_result_file"
   // "audio_video_source_result"
-  const ACTIVE_INPUT_MODE: InputMode = "audio_video_source_result";
+  // "audio_video_result_file"
+  const ACTIVE_INPUT_MODE: InputMode = "audio_video_result_file";
   // 可选：
   // "basic_groove"
   // "ride_groove"
@@ -1057,6 +1114,11 @@ export default function App() {
   // "demo_video_result"
   const ACTIVE_AUDIO_VIDEO_SOURCE_RESULT: AudioVideoSourceResultName =
     "demo_video_result";
+  // 可选：
+  // "demo_audio_file_result"
+  // "demo_video_file_result"
+  const ACTIVE_AUDIO_VIDEO_RESULT_FILE: AudioVideoResultFileName =
+    "demo_video_file_result";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -1070,6 +1132,7 @@ export default function App() {
         activeTranscriptionSample: ACTIVE_TRANSCRIPTION_SAMPLE,
         activeExternalResultFile: ACTIVE_EXTERNAL_RESULT_FILE,
         activeAudioVideoSourceResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
+        activeAudioVideoResultFile: ACTIVE_AUDIO_VIDEO_RESULT_FILE,
       });
 
       console.log("[V4] loadMidiPreview START");
@@ -1163,6 +1226,32 @@ export default function App() {
           contentSampleValidation
         );
       }
+      if (activeInputModeSummary.audioVideoResultFile !== null) {
+        const activeFileEntry = AUDIO_VIDEO_RESULT_FILES[ACTIVE_AUDIO_VIDEO_RESULT_FILE];
+        const fileContentValidation =
+          validateAudioVideoResultFileContentSample(activeFileEntry);
+
+        console.log("[AV-FILE] active file", ACTIVE_AUDIO_VIDEO_RESULT_FILE);
+        console.log("[AV-FILE] file entry", activeFileEntry);
+        console.log("[AV-FILE] file source", "src/data/audioVideoResultFiles.ts");
+        console.log("[AV-FILE] content source name", activeFileEntry.content.sourceName);
+        console.log("[AV-FILE] content source kind", activeFileEntry.content.sourceKind);
+        console.log(
+          "[AV-FILE] content transcription count",
+          activeFileEntry.content.transcriptionContent.length
+        );
+        console.log(
+          "[AV-FILE] content sample validation",
+          fileContentValidation
+        );
+        console.log(
+          "[AV-FILE] content transcription distribution",
+          activeFileEntry.content.transcriptionContent.reduce((acc, hit) => {
+            acc[hit.instrument] = (acc[hit.instrument] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)
+        );
+      }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
       console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
       console.log("[TRANSCRIPTION] sample source", "src/data/externalTranscriptionResults.ts");
@@ -1227,6 +1316,7 @@ export default function App() {
           activeTranscriptionSample: ACTIVE_TRANSCRIPTION_SAMPLE,
           activeExternalResultFile: ACTIVE_EXTERNAL_RESULT_FILE,
           activeAudioVideoSourceResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
+          activeAudioVideoResultFile: ACTIVE_AUDIO_VIDEO_RESULT_FILE,
         });
 
         console.log("[INPUT-MODE] pipeline source check", {
@@ -1354,6 +1444,16 @@ export default function App() {
           console.log("[AV-SOURCE] validation summary", {
             activeResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
             sourceKind: activeAudioVideoSource.sourceKind,
+            pipelineSourceType: pipelineInput.sourceType,
+            initialEventCount: initialDrumEvents.length,
+          });
+        }
+
+        if (activeInputModeSummary.audioVideoResultFile !== null) {
+          console.log("[AV-FILE] pipeline entry summary", {
+            activeFile: ACTIVE_AUDIO_VIDEO_RESULT_FILE,
+            sourceKind:
+              AUDIO_VIDEO_RESULT_FILES[ACTIVE_AUDIO_VIDEO_RESULT_FILE].content.sourceKind,
             pipelineSourceType: pipelineInput.sourceType,
             initialEventCount: initialDrumEvents.length,
           });
