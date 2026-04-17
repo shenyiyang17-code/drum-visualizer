@@ -25,6 +25,32 @@ type MappedDrumInfo = {
   articulation: MappedDrumArticulation;
 };
 
+type InitialDrumInstrument =
+  | "BD"
+  | "SD"
+  | "HH"
+  | "CR"
+  | "RD"
+  | "TM_HIGH"
+  | "TM_MID"
+  | "TM_FLOOR"
+  | "UNMAPPED";
+
+type InitialDrumArticulation =
+  | "normal"
+  | "closed"
+  | "open"
+  | "pedal"
+  | "ghost"
+  | "unknown";
+
+type InitialDrumEvent = {
+  time: number;
+  instrument: InitialDrumInstrument;
+  articulation: InitialDrumArticulation;
+  velocity: number;
+};
+
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
 
 type DrumDataShape =
@@ -314,6 +340,30 @@ function mapMidiNoteToDrumInfo(midiNote: number): MappedDrumInfo | null {
   return MIDI_NOTE_TO_DRUM_INFO[midiNote] ?? null;
 }
 
+function buildInitialDrumEventsFromMidiNotes(
+  notes: Array<{ midi: number; time: number; velocity: number }>
+): InitialDrumEvent[] {
+  return notes.map((note) => {
+    const mapped = mapMidiNoteToDrumInfo(note.midi);
+
+    if (!mapped) {
+      return {
+        time: note.time,
+        instrument: "UNMAPPED",
+        articulation: "unknown",
+        velocity: note.velocity,
+      };
+    }
+
+    return {
+      time: note.time,
+      instrument: mapped.instrument,
+      articulation: mapped.articulation,
+      velocity: note.velocity,
+    };
+  });
+}
+
 export default function App() {
   const ScoreViewWithMidiDebug = ScoreView as any;
 
@@ -551,23 +601,60 @@ export default function App() {
 
         console.log("[MAP] unmapped raw notes sample", unmappedRawNotes);
 
-        const normalizedV3DrumEvents: V3TempDrumEvent[] = allNotes
-          .map((note) => {
-            const mapped = mapMidiNoteToDrumInfo(note.midi);
-            const { stepIndex, quantizedTime } = quantizeToGrid(note.time, stepDuration);
-            const beatIndex = Math.floor(stepIndex / stepsPerBeat);
-            const barIndex = Math.floor(beatIndex / beatsPerBar);
+        const initialDrumEvents = buildInitialDrumEventsFromMidiNotes(
+          (firstTrack?.notes ?? []).map((note) => ({
+            midi: note.midi,
+            time: note.time,
+            velocity: note.velocity,
+          }))
+        );
 
-            return {
-              time: quantizedTime,
-              stepIndex,
-              beatIndex,
-              barIndex,
-              instrument: mapped?.instrument ?? "UNMAPPED",
-              articulation: mapped?.articulation ?? "unknown",
-              velocity: note.velocity,
-            };
-          });
+        console.log("[INPUT] initial drum event sample", initialDrumEvents.slice(0, 12));
+
+        const initialDrumEventDistribution = initialDrumEvents.reduce((acc, ev) => {
+          const key = `${ev.instrument}:${ev.articulation}`;
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        console.log("[INPUT] initial drum event distribution", initialDrumEventDistribution);
+
+        const initialInputIntegrity = {
+          count: initialDrumEvents.length,
+          invalidCount: initialDrumEvents.filter(
+            (ev) =>
+              typeof ev.time !== "number" ||
+              typeof ev.velocity !== "number" ||
+              !ev.instrument ||
+              !ev.articulation
+          ).length,
+        };
+
+        console.log("[INPUT] initial input integrity", initialInputIntegrity);
+        console.log("[INPUT] pipeline entry confirmed", {
+          source: "InitialDrumEvent[]",
+          count: initialDrumEvents.length,
+        });
+
+        if (initialDrumEvents.length === 0) {
+          return;
+        }
+
+        const normalizedV3DrumEvents: V3TempDrumEvent[] = initialDrumEvents.map((event) => {
+          const { stepIndex, quantizedTime } = quantizeToGrid(event.time, stepDuration);
+          const beatIndex = Math.floor(stepIndex / stepsPerBeat);
+          const barIndex = Math.floor(beatIndex / beatsPerBar);
+
+          return {
+            time: quantizedTime,
+            stepIndex,
+            beatIndex,
+            barIndex,
+            instrument: event.instrument,
+            articulation: event.articulation,
+            velocity: event.velocity,
+          };
+        });
 
         const quantizedSample = normalizedV3DrumEvents.slice(0, 12).map((ev) => ({
           instrument: ev.instrument,
