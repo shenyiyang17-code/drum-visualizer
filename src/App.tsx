@@ -94,6 +94,8 @@ type ActiveInputModeSummary = {
   externalResultFile: string | null;
 };
 
+type ExternalResultFileContentItem = ExternalInitialDrumEvent | ExternalTranscriptionHit;
+
 type EditMode = "setLoopStart" | "setLoopEnd" | null;
 
 type DrumDataShape =
@@ -520,6 +522,27 @@ function buildPipelineInputFromExternalResultFile(
   );
 }
 
+function getExternalResultFileContent(
+  fileName: ExternalResultFileName
+): ExternalResultFileContentItem[] {
+  const fileEntry: ExternalResultFileEntry = EXTERNAL_RESULT_FILES[fileName];
+
+  if (fileEntry.format === "external_transcription_results") {
+    return EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES[fileEntry.sampleName].map((hit) => ({
+      time: hit.time,
+      instrument: hit.instrument,
+      velocity: hit.velocity,
+    }));
+  }
+
+  return EXTERNAL_INITIAL_EVENT_SAMPLES[fileEntry.sampleName].map((event) => ({
+    time: event.time,
+    instrument: event.instrument,
+    articulation: event.articulation,
+    velocity: event.velocity,
+  }));
+}
+
 function buildActiveInputModeSummary(params: {
   mode: InputMode;
   activeMidiTestFile: string;
@@ -785,12 +808,21 @@ export default function App() {
       console.log("[INPUT-MODE] active mode", ACTIVE_INPUT_MODE);
       console.log("[INPUT-MODE] summary", activeInputModeSummary);
       if (ACTIVE_INPUT_MODE === "external_result_file") {
-        console.log("[RESULT-FILE] active file", ACTIVE_EXTERNAL_RESULT_FILE);
-        console.log(
-          "[RESULT-FILE] file entry",
-          EXTERNAL_RESULT_FILES[ACTIVE_EXTERNAL_RESULT_FILE]
+        const activeExternalResultFileEntry =
+          EXTERNAL_RESULT_FILES[ACTIVE_EXTERNAL_RESULT_FILE];
+        const activeExternalResultContent = getExternalResultFileContent(
+          ACTIVE_EXTERNAL_RESULT_FILE
         );
+
+        console.log("[RESULT-FILE] active file", ACTIVE_EXTERNAL_RESULT_FILE);
+        console.log("[RESULT-FILE] file entry", activeExternalResultFileEntry);
         console.log("[RESULT-FILE] file source", "src/data/externalResultFiles.ts");
+        console.log("[RESULT-FILE] content format", activeExternalResultFileEntry.format);
+        console.log("[RESULT-FILE] content count", activeExternalResultContent.length);
+        console.log(
+          "[RESULT-FILE] content sample",
+          activeExternalResultContent.slice(0, 10)
+        );
       }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
       console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
