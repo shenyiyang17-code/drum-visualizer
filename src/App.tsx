@@ -393,8 +393,8 @@ function buildPipelineInputFromExternalInitialEvents(
   };
 }
 
-function buildMockExternalInitialEvents(): InitialDrumEvent[] {
-  return [
+const EXTERNAL_INITIAL_EVENT_SAMPLES = {
+  basic_groove: [
     { time: 0.0, instrument: "BD", articulation: "normal", velocity: 0.9 },
     { time: 0.0, instrument: "HH", articulation: "closed", velocity: 0.7 },
     { time: 0.5, instrument: "HH", articulation: "closed", velocity: 0.7 },
@@ -405,7 +405,30 @@ function buildMockExternalInitialEvents(): InitialDrumEvent[] {
     { time: 2.0, instrument: "HH", articulation: "closed", velocity: 0.68 },
     { time: 3.0, instrument: "SD", articulation: "normal", velocity: 0.84 },
     { time: 3.0, instrument: "CR", articulation: "normal", velocity: 0.8 },
-  ];
+  ],
+  ride_groove: [
+    { time: 0.0, instrument: "BD", articulation: "normal", velocity: 0.9 },
+    { time: 0.0, instrument: "RD", articulation: "normal", velocity: 0.72 },
+    { time: 0.5, instrument: "RD", articulation: "normal", velocity: 0.72 },
+    { time: 1.0, instrument: "SD", articulation: "normal", velocity: 0.86 },
+    { time: 1.0, instrument: "RD", articulation: "normal", velocity: 0.72 },
+    { time: 1.5, instrument: "RD", articulation: "normal", velocity: 0.72 },
+    { time: 2.0, instrument: "BD", articulation: "normal", velocity: 0.88 },
+    { time: 2.0, instrument: "RD", articulation: "normal", velocity: 0.72 },
+    { time: 3.0, instrument: "SD", articulation: "normal", velocity: 0.84 },
+    { time: 3.0, instrument: "CR", articulation: "normal", velocity: 0.8 },
+  ],
+} as const;
+
+function getActiveExternalInitialEvents(
+  sampleName: keyof typeof EXTERNAL_INITIAL_EVENT_SAMPLES
+): InitialDrumEvent[] {
+  return EXTERNAL_INITIAL_EVENT_SAMPLES[sampleName].map((ev) => ({
+    time: ev.time,
+    instrument: ev.instrument,
+    articulation: ev.articulation,
+    velocity: ev.velocity,
+  }));
 }
 
 void buildPipelineInputFromExternalInitialEvents;
@@ -588,6 +611,10 @@ export default function App() {
   // "midi_test"
   // "external_initial_events"
   const ACTIVE_INPUT_SOURCE: InputSourceType = "external_initial_events";
+  // 可选：
+  // "basic_groove"
+  // "ride_groove"
+  const ACTIVE_EXTERNAL_SAMPLE = "ride_groove" as const;
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -658,7 +685,7 @@ export default function App() {
             })),
           },
           external_initial_events: buildPipelineInputFromExternalInitialEvents(
-            buildMockExternalInitialEvents()
+            getActiveExternalInitialEvents(ACTIVE_EXTERNAL_SAMPLE)
           ),
         };
 
@@ -666,7 +693,7 @@ export default function App() {
 
         if (pipelineInput.sourceType === "midi_test" && pipelineInput.midiNotes.length === 0) {
           return;
-          };
+        }
 
         const initialDrumEvents = buildPipelineInputToInitialEvents(pipelineInput);
 
@@ -677,6 +704,16 @@ export default function App() {
         }
 
         if (pipelineInput.sourceType === "external_initial_events") {
+          console.log("[EXTERNAL] active sample", ACTIVE_EXTERNAL_SAMPLE);
+          console.log("[EXTERNAL] sample event count", pipelineInput.initialEvents.length);
+          console.log(
+            "[EXTERNAL] sample distribution",
+            pipelineInput.initialEvents.reduce((acc, ev) => {
+              const key = `${ev.instrument}:${ev.articulation}`;
+              acc[key] = (acc[key] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>)
+          );
           console.log("[ADAPTER] external initial event count", pipelineInput.initialEvents.length);
           console.log(
             "[ADAPTER] external initial event sample",
