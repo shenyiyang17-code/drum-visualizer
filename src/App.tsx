@@ -894,6 +894,195 @@ function buildV1DeliveryBoundarySummary(params: {
   };
 }
 
+const V1_NOTATION_LANE_ORDER = [
+  "CR",
+  "RD",
+  "HH",
+  "HH_PEDAL",
+  "TM_HIGH",
+  "SD",
+  "TM_MID",
+  "TM_FLOOR",
+  "BD",
+] as const;
+
+function getV1NotationLane(instrument: string, articulation: string) {
+  if (instrument === "CR") return "CR";
+  if (instrument === "RD") return "RD";
+  if (instrument === "HH" && articulation === "pedal") return "HH_PEDAL";
+  if (instrument === "HH") return "HH";
+  if (instrument === "TM_HIGH") return "TM_HIGH";
+  if (instrument === "SD") return "SD";
+  if (instrument === "TM_MID") return "TM_MID";
+  if (instrument === "TM_FLOOR") return "TM_FLOOR";
+  if (instrument === "BD") return "BD";
+  return "UNASSIGNED";
+}
+
+function getV1NotationMarking(instrument: string, articulation: string) {
+  if (instrument === "HH" && articulation === "open") {
+    return { notehead: "x", marker: "open" };
+  }
+  if (instrument === "HH" && articulation === "pedal") {
+    return { notehead: "x", marker: "pedal" };
+  }
+  if (instrument === "HH") {
+    return { notehead: "x", marker: "closed" };
+  }
+  if (instrument === "CR") {
+    return { notehead: "x", marker: "crash" };
+  }
+  if (instrument === "RD") {
+    return { notehead: "x", marker: "ride" };
+  }
+  if (instrument === "SD" && articulation === "ghost") {
+    return { notehead: "normal", marker: "ghost" };
+  }
+  if (instrument === "SD") {
+    return { notehead: "normal", marker: "normal" };
+  }
+  if (instrument === "BD") {
+    return { notehead: "normal", marker: "normal" };
+  }
+  if (
+    instrument === "TM_HIGH" ||
+    instrument === "TM_MID" ||
+    instrument === "TM_FLOOR"
+  ) {
+    return { notehead: "normal", marker: "normal" };
+  }
+  return { notehead: "normal", marker: "unassigned" };
+}
+
+function buildV1NotationFoundationSummary(
+  events: Array<{ instrument: string; articulation: string }>
+) {
+  const laneCounts: Record<string, number> = {};
+  const noteheadCounts: Record<string, number> = {};
+  const markerCounts: Record<string, number> = {};
+
+  for (const event of events) {
+    const lane = getV1NotationLane(event.instrument, event.articulation);
+    const marking = getV1NotationMarking(event.instrument, event.articulation);
+
+    laneCounts[lane] = (laneCounts[lane] || 0) + 1;
+    noteheadCounts[marking.notehead] = (noteheadCounts[marking.notehead] || 0) + 1;
+    markerCounts[marking.marker] = (markerCounts[marking.marker] || 0) + 1;
+  }
+
+  return {
+    laneOrder: V1_NOTATION_LANE_ORDER,
+    laneCounts,
+    noteheadCounts,
+    markerCounts,
+  };
+}
+
+function buildV1NotationSameStepLaneCombos(
+  steps: Array<{ stepIndex: number; instruments: string[] }>
+) {
+  let bdHhCount = 0;
+  let sdHhCount = 0;
+  let bdCrCount = 0;
+  let sdCrCount = 0;
+  let bdRdCount = 0;
+  let sdRdCount = 0;
+
+  const comboSamples: Array<{ stepIndex: number; lanes: string[] }> = [];
+
+  for (const step of steps) {
+    const laneSet = new Set(
+      step.instruments.map((instrument) => getV1NotationLane(instrument, "normal"))
+    );
+
+    const lanes = Array.from(laneSet);
+
+    if (laneSet.has("BD") && laneSet.has("HH")) bdHhCount += 1;
+    if (laneSet.has("SD") && laneSet.has("HH")) sdHhCount += 1;
+    if (laneSet.has("BD") && laneSet.has("CR")) bdCrCount += 1;
+    if (laneSet.has("SD") && laneSet.has("CR")) sdCrCount += 1;
+    if (laneSet.has("BD") && laneSet.has("RD")) bdRdCount += 1;
+    if (laneSet.has("SD") && laneSet.has("RD")) sdRdCount += 1;
+
+    if (lanes.length >= 2 && comboSamples.length < 12) {
+      comboSamples.push({
+        stepIndex: step.stepIndex,
+        lanes,
+      });
+    }
+  }
+
+  return {
+    bdHhCount,
+    sdHhCount,
+    bdCrCount,
+    sdCrCount,
+    bdRdCount,
+    sdRdCount,
+    comboSamples,
+  };
+}
+
+function buildV1NotationFoundationReadiness(params: {
+  events: Array<{ instrument: string; articulation: string }>;
+  foundationSummary: {
+    laneCounts: Record<string, number>;
+    noteheadCounts: Record<string, number>;
+    markerCounts: Record<string, number>;
+  };
+  sameStepCombos: {
+    bdHhCount: number;
+    sdHhCount: number;
+    bdCrCount: number;
+    sdCrCount: number;
+    bdRdCount: number;
+    sdRdCount: number;
+  };
+}) {
+  const { events, foundationSummary, sameStepCombos } = params;
+
+  const hasCrashLane = events.some(
+    (event) => getV1NotationLane(event.instrument, event.articulation) === "CR"
+  );
+  const hasRideLane = events.some(
+    (event) => getV1NotationLane(event.instrument, event.articulation) === "RD"
+  );
+  const hasHiHatLane = events.some(
+    (event) => getV1NotationLane(event.instrument, event.articulation) === "HH"
+  );
+  const hasSnareLane = events.some(
+    (event) => getV1NotationLane(event.instrument, event.articulation) === "SD"
+  );
+  const hasBassDrumLane = events.some(
+    (event) => getV1NotationLane(event.instrument, event.articulation) === "BD"
+  );
+
+  const supportsMultipleNoteheadTypes =
+    Object.keys(foundationSummary.noteheadCounts).length >= 2;
+
+  const supportsMarkerSeparation =
+    Object.keys(foundationSummary.markerCounts).length >= 2;
+
+  const hasCoreSameStepSupport =
+    sameStepCombos.bdHhCount > 0 ||
+    sameStepCombos.sdHhCount > 0 ||
+    sameStepCombos.bdCrCount > 0 ||
+    sameStepCombos.sdCrCount > 0 ||
+    sameStepCombos.bdRdCount > 0 ||
+    sameStepCombos.sdRdCount > 0;
+
+  return {
+    hasCrashLane,
+    hasRideLane,
+    hasHiHatLane,
+    hasSnareLane,
+    hasBassDrumLane,
+    supportsMultipleNoteheadTypes,
+    supportsMarkerSeparation,
+    hasCoreSameStepSupport,
+  };
+}
+
 function buildPipelineInputFromAudioVideoSourceResultObject(
   result: AudioVideoSourceResult
 ): PipelineInput {
@@ -1176,6 +1365,32 @@ export default function App() {
     [notesByStep]
   );
 
+  const v1NotationFoundationSummary = useMemo(
+    () => buildV1NotationFoundationSummary(finalScoreEvents),
+    [finalScoreEvents]
+  );
+
+  const v1NotationSameStepLaneCombos = useMemo(
+    () =>
+      buildV1NotationSameStepLaneCombos(
+        notesByStep.map((step) => ({
+          stepIndex: step.stepIndex,
+          instruments: step.notes.map((note) => note.instrument),
+        }))
+      ),
+    [notesByStep]
+  );
+
+  const v1NotationFoundationReadiness = useMemo(
+    () =>
+      buildV1NotationFoundationReadiness({
+        events: finalScoreEvents,
+        foundationSummary: v1NotationFoundationSummary,
+        sameStepCombos: v1NotationSameStepLaneCombos,
+      }),
+    [finalScoreEvents, v1NotationFoundationSummary, v1NotationSameStepLaneCombos]
+  );
+
   useEffect(() => {
     console.log("[OUTPUT] notesByStep sample", notesByStepCheck);
   }, [notesByStepCheck]);
@@ -1187,6 +1402,44 @@ export default function App() {
   useEffect(() => {
     console.log("[NOTATION] multi-hit step sample", notationMultiHitSample);
   }, [notationMultiHitSample]);
+
+  useEffect(() => {
+    console.log("[NOTATION-FOUNDATION] same-step lane combos", {
+      bdHhCount: v1NotationSameStepLaneCombos.bdHhCount,
+      sdHhCount: v1NotationSameStepLaneCombos.sdHhCount,
+      bdCrCount: v1NotationSameStepLaneCombos.bdCrCount,
+      sdCrCount: v1NotationSameStepLaneCombos.sdCrCount,
+      bdRdCount: v1NotationSameStepLaneCombos.bdRdCount,
+      sdRdCount: v1NotationSameStepLaneCombos.sdRdCount,
+    });
+
+    console.log(
+      "[NOTATION-FOUNDATION] same-step lane combo sample",
+      v1NotationSameStepLaneCombos.comboSamples
+    );
+  }, [v1NotationSameStepLaneCombos]);
+
+  useEffect(() => {
+    if (finalScoreEvents.length === 0) {
+      return;
+    }
+
+    console.log(
+      "[NOTATION-FOUNDATION] v1 readiness",
+      v1NotationFoundationReadiness
+    );
+
+    console.log("[NOTATION-FOUNDATION] module 1 conclusion", {
+      laneOrderFixed: true,
+      markingRulesFixed: true,
+      sameStepLaneCombosObserved:
+        v1NotationFoundationReadiness.hasCoreSameStepSupport,
+      readyToEnterModule2:
+        v1NotationFoundationReadiness.hasSnareLane &&
+        v1NotationFoundationReadiness.hasBassDrumLane &&
+        v1NotationFoundationReadiness.supportsMultipleNoteheadTypes,
+    });
+  }, [finalScoreEvents, v1NotationFoundationReadiness]);
 
   console.log("[V5] notesByStep", notesByStep.slice(0, 10));
 
@@ -2106,6 +2359,10 @@ export default function App() {
           outputStable: finalScoreEvents.length > 0,
         });
 
+        const v1NotationFoundationSummary = buildV1NotationFoundationSummary(
+          finalScoreEvents
+        );
+
         console.log("[BOUNDARY] final unknown summary", finalUnknownSummary);
         console.log("[BOUNDARY] unknown flow summary", {
           inputUnknownLikeCount: inputUnknownSummary.totalUnknownLikeCount,
@@ -2141,6 +2398,8 @@ export default function App() {
             finalUnknownSummary.totalUnknownLikeCount > 0,
           readyForV1Scope: finalScoreEvents.length > 0,
         });
+        console.log("[NOTATION-FOUNDATION] lane order", V1_NOTATION_LANE_ORDER);
+        console.log("[NOTATION-FOUNDATION] summary", v1NotationFoundationSummary);
 
         const simplifiedEvents: V3TempDrumEvent[] = finalScoreEvents;
 
