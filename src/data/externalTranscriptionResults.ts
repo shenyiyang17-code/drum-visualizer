@@ -46,3 +46,7 @@ export const EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES = {
 
 export type ExternalTranscriptionSampleName =
   keyof typeof EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES;
+
+export const EXTERNAL_TRANSCRIPTION_SAMPLE_NAMES = Object.keys(
+  EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES
+) as ExternalTranscriptionSampleName[];

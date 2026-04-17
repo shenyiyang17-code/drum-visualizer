@@ -8,6 +8,7 @@ import {
 } from "./data/externalInitialEventSamples";
 import {
   EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES,
+  EXTERNAL_TRANSCRIPTION_SAMPLE_NAMES,
   type ExternalTranscriptionHit,
   type ExternalTranscriptionInstrument,
   type ExternalTranscriptionSampleName,
@@ -464,10 +465,20 @@ function buildInitialEventsFromExternalTranscriptionHits(
   });
 }
 
+function getActiveExternalTranscriptionHits(
+  sampleName: ExternalTranscriptionSampleName
+): ExternalTranscriptionHit[] {
+  return EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES[sampleName].map((hit) => ({
+    time: hit.time,
+    instrument: hit.instrument,
+    velocity: hit.velocity,
+  }));
+}
+
 function buildPipelineInputFromExternalTranscriptionSample(
   sampleName: ExternalTranscriptionSampleName
 ): PipelineInput {
-  const hits = EXTERNAL_TRANSCRIPTION_RESULT_SAMPLES[sampleName];
+  const hits = getActiveExternalTranscriptionHits(sampleName);
   const initialEvents = buildInitialEventsFromExternalTranscriptionHits(
     hits.map((hit: ExternalTranscriptionHit) => ({
       time: hit.time,
@@ -680,6 +691,8 @@ export default function App() {
       console.log("[ADAPTER] active input source", ACTIVE_INPUT_SOURCE);
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
       console.log("[EXTERNAL] available samples", Object.keys(EXTERNAL_INITIAL_EVENT_SAMPLES));
+      console.log("[TRANSCRIPTION] sample source", "src/data/externalTranscriptionResults.ts");
+      console.log("[TRANSCRIPTION] available samples", EXTERNAL_TRANSCRIPTION_SAMPLE_NAMES);
 
       try {
         const response = await fetch(encodeURI(`/midi/${activeMidiTestFile}`));
@@ -754,6 +767,11 @@ export default function App() {
 
         const pipelineInput = buildActivePipelineInput(ACTIVE_INPUT_SOURCE);
 
+        const activeTranscriptionHits =
+          ACTIVE_INPUT_SOURCE === "external_transcription_results"
+            ? getActiveExternalTranscriptionHits(ACTIVE_TRANSCRIPTION_SAMPLE)
+            : [];
+
         if (pipelineInput.sourceType === "midi_test" && pipelineInput.midiNotes.length === 0) {
           return;
         }
@@ -773,6 +791,11 @@ export default function App() {
               },
               {} as Record<string, number>
             )
+          );
+          console.log("[TRANSCRIPTION] active hit count", activeTranscriptionHits.length);
+          console.log(
+            "[TRANSCRIPTION] active hit sample",
+            activeTranscriptionHits.slice(0, 10)
           );
         }
 
