@@ -652,6 +652,15 @@ function buildPipelineInputFromAudioVideoSourceResult(
   return buildPipelineInputFromExternalInitialEvents(initialEvents);
 }
 
+function buildAudioVideoSourceKindCoverageCheck(
+  sourceKind: AudioVideoSourceResult["sourceKind"]
+) {
+  return {
+    isAudioFile: sourceKind === "audio_file",
+    isVideoFile: sourceKind === "video_file",
+  };
+}
+
 function getExternalResultFileContent(
   fileName: ExternalResultFileName
 ): ExternalResultFileContentItem[] {
@@ -934,7 +943,7 @@ export default function App() {
   // "demo_audio_result"
   // "demo_video_result"
   const ACTIVE_AUDIO_VIDEO_SOURCE_RESULT: AudioVideoSourceResultName =
-    "demo_audio_result";
+    "demo_video_result";
   const activeMidiTestFile = MIDI_TEST_FILES[ACTIVE_MIDI_TEST_INDEX];
 
   useEffect(() => {
@@ -987,23 +996,43 @@ export default function App() {
         );
       }
       if (activeInputModeSummary.audioVideoSourceResult !== null) {
-        const activeSourceResult =
+        const activeAudioVideoSource =
           AUDIO_VIDEO_SOURCE_RESULTS[ACTIVE_AUDIO_VIDEO_SOURCE_RESULT];
+        const activeAudioVideoSourceKind: AudioVideoSourceResult["sourceKind"] =
+          activeAudioVideoSource.sourceKind;
 
         console.log("[AV-SOURCE] active result", ACTIVE_AUDIO_VIDEO_SOURCE_RESULT);
-        console.log("[AV-SOURCE] source name", activeSourceResult.sourceName);
-        console.log("[AV-SOURCE] source kind", activeSourceResult.sourceKind);
+        console.log("[AV-SOURCE] source name", activeAudioVideoSource.sourceName);
+        console.log("[AV-SOURCE] source kind", activeAudioVideoSourceKind);
+        console.log("[AV-SOURCE] source summary", {
+          activeResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
+          sourceName: activeAudioVideoSource.sourceName,
+          sourceKind: activeAudioVideoSourceKind,
+          transcriptionFormat: activeAudioVideoSource.transcriptionFormat,
+          transcriptionCount: activeAudioVideoSource.transcriptionContent.length,
+        });
+        console.log(
+          "[AV-SOURCE] kind coverage check",
+          buildAudioVideoSourceKindCoverageCheck(activeAudioVideoSourceKind)
+        );
         console.log(
           "[AV-SOURCE] transcription format",
-          activeSourceResult.transcriptionFormat
+          activeAudioVideoSource.transcriptionFormat
         );
         console.log(
           "[AV-SOURCE] transcription count",
-          activeSourceResult.transcriptionContent.length
+          activeAudioVideoSource.transcriptionContent.length
+        );
+        console.log(
+          "[AV-SOURCE] transcription distribution",
+          activeAudioVideoSource.transcriptionContent.reduce((acc, hit) => {
+            acc[hit.instrument] = (acc[hit.instrument] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)
         );
         console.log(
           "[AV-SOURCE] transcription sample",
-          activeSourceResult.transcriptionContent.slice(0, 10)
+          activeAudioVideoSource.transcriptionContent.slice(0, 10)
         );
       }
       console.log("[EXTERNAL] sample source", "src/data/externalInitialEventSamples.ts");
@@ -1168,6 +1197,20 @@ export default function App() {
         if (activeInputModeSummary.externalResultFile !== null) {
           console.log("[RESULT-FILE] pipeline entry summary", {
             activeFile: ACTIVE_EXTERNAL_RESULT_FILE,
+            pipelineSourceType: pipelineInput.sourceType,
+            initialEventCount: initialDrumEvents.length,
+          });
+        }
+
+        if (activeInputModeSummary.audioVideoSourceResult !== null) {
+          const activeAudioVideoSource =
+            AUDIO_VIDEO_SOURCE_RESULTS[ACTIVE_AUDIO_VIDEO_SOURCE_RESULT];
+          const activeAudioVideoSourceKind: AudioVideoSourceResult["sourceKind"] =
+            activeAudioVideoSource.sourceKind;
+
+          console.log("[AV-SOURCE] pipeline entry summary", {
+            activeResult: ACTIVE_AUDIO_VIDEO_SOURCE_RESULT,
+            sourceKind: activeAudioVideoSourceKind,
             pipelineSourceType: pipelineInput.sourceType,
             initialEventCount: initialDrumEvents.length,
           });
