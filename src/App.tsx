@@ -351,14 +351,14 @@ export default function App() {
     let cancelled = false;
 
     const loadMidiPreview = async () => {
-      const currentMidiFile = "080 Half-Time Pop Ride.mid";
+      const currentMidiFile = "135 Motown Beat Ride.mid";
 
       console.log("[V4] loadMidiPreview START");
       console.log("[V5] test file:", currentMidiFile);
       console.log("[MAP-TEST] current midi file", currentMidiFile);
 
       try {
-        const response = await fetch("/midi/080 Half-Time Pop Ride.mid");
+        const response = await fetch("/midi/135 Motown Beat Ride.mid");
         if (!response.ok) {
           console.error("[V4] fetch failed", response.status);
           throw new Error(`Failed to fetch MIDI: ${response.status} ${response.statusText}`);
@@ -455,17 +455,49 @@ export default function App() {
 
         console.log("[MAP] mapped instrument/articulation counts", mappedCounts);
 
-        const mappedInstrumentsPresent = Array.from(
+        const mappedInstrumentSet = Array.from(
           new Set(normalizedV3DrumEvents.map((ev) => ev.instrument))
+        );
+        const mappedArticulationSet = Array.from(
+          new Set(
+            normalizedV3DrumEvents
+              .map((ev) => ev.articulation)
+              .filter((articulation) => articulation !== "unknown")
+          )
         );
         const coverageCheck = {
           total: normalizedV3DrumEvents.length,
           mapped: normalizedV3DrumEvents.filter((ev) => ev.instrument !== "UNMAPPED").length,
           unmapped: normalizedV3DrumEvents.filter((ev) => ev.instrument === "UNMAPPED").length,
         };
+        const coverageSummary = {
+          core: {
+            BD: mappedInstrumentSet.includes("BD"),
+            SD: mappedInstrumentSet.includes("SD"),
+            HH: mappedInstrumentSet.includes("HH"),
+          },
+          cymbals: {
+            CR: mappedInstrumentSet.includes("CR"),
+            RD: mappedInstrumentSet.includes("RD"),
+          },
+          toms: {
+            TM_HIGH: mappedInstrumentSet.includes("TM_HIGH"),
+            TM_MID: mappedInstrumentSet.includes("TM_MID"),
+            TM_FLOOR: mappedInstrumentSet.includes("TM_FLOOR"),
+          },
+          articulations: {
+            normal: mappedArticulationSet.includes("normal"),
+            closed: mappedArticulationSet.includes("closed"),
+            open: mappedArticulationSet.includes("open"),
+            pedal: mappedArticulationSet.includes("pedal"),
+            ghost: mappedArticulationSet.includes("ghost"),
+          },
+        };
 
-        console.log("[MAP-TEST] mapped instruments present", mappedInstrumentsPresent);
+        console.log("[MAP-TEST] mapped instruments present", mappedInstrumentSet);
+        console.log("[MAP-TEST] mapped articulations present", mappedArticulationSet);
         console.log("[MAP-TEST] coverage check", coverageCheck);
+        console.log("[MAP-TEST] coverage summary", coverageSummary);
 
         const cleanedEvents: V3TempDrumEvent[] = [];
         const stepMap = new Map<string, V3TempDrumEvent>();
